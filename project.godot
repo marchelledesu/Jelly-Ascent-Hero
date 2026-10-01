@@ -11,18 +11,24 @@ config_version=5
 [application]
 
 config/name="jellyascenthero"
-run/main_scene="uid://c3374mtlnabgp"
+run/main_scene="res://Scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
 [display]
 
+window/size/viewport_width=700
+window/size/viewport_height=648
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
 [physics]
 
 3d/physics_engine="Jolt Physics"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/softbody2d/plugin.cfg")
 
 [rendering]
 

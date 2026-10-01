@@ -1,0 +1,47 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://Scenes/platform.gd" id="1_script"]
+[ext_resource type="Script" path="res://Scenes/platform_softbody.gd" id="2_softbody"]
+[ext_resource type="Texture2D" path="res://Assets/jelly_platform.svg" id="3_texture"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_platform"]
+friction = 0.2
+bounce = 0.05
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_rigid_platform"]
+size = Vector2(120, 12)
+
+[node name="Platform" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="SoftBody" type="Polygon2D" parent="."]
+texture = ExtResource("3_texture")
+skeleton = NodePath("Skeleton2D")
+script = ExtResource("2_softbody")
+vertex_interval = 16
+joint_type = "spring"
+stiffness = 24.0
+damping = 4.0
+mass = 0.15
+gravity_scale = 0.0
+can_sleep = false
+collision_mask = 3
+physics_material_override = SubResource("PhysicsMaterial_platform")
+
+[node name="RigidPlatform" type="RigidBody2D" parent="."]
+freeze = true
+freeze_mode = 1
+collision_mask = 2
+physics_material_override = SubResource("PhysicsMaterial_platform")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RigidPlatform"]
+shape = SubResource("RectangleShape2D_rigid_platform")
+
+[node name="PlatformVisuals" type="Node2D" parent="."]
+
+[node name="RigidPlatformVisual" type="Polygon2D" parent="PlatformVisuals"]
+polygon = PackedVector2Array(-60, -6, 60, -6, 60, 6, -60, 6)
+
+[node name="CollapseTimer" type="Timer" parent="."]
+wait_time = 0.2
+one_shot = true

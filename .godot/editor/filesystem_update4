@@ -1,2 +1,8 @@
-res://Scenes/Level_1.tscn
+res://Scenes/player.gd
+res://Scenes/test_hud.gd
+res://Scenes/platform.gd
+res://Scenes/platform.tscn
+res://Scenes/level_controller.gd
+res://Scenes/platform_softbody.gd
 res://Scenes/player.tscn
+res://Scenes/Level_1.tscn
