@@ -166,7 +166,13 @@ func show_leaderboard() -> void:
 		for index in entries.size():
 			var entry: Dictionary = entries[index]
 			var row := Label.new()
-			row.text = "%02d     %8d pts     %4d m     x%d" % [index + 1, int(entry.get("score", 0)), int(entry.get("height_meters", 0)), int(entry.get("combo", 0))]
+			row.text = "%02d  %s  %d pts  %d m  x%d" % [
+				index + 1,
+				str(entry.get("name", "JELLY")),
+				int(entry.get("score", 0)),
+				int(entry.get("height_meters", 0)),
+				int(entry.get("combo", 0)),
+			]
 			row.add_theme_font_size_override("font_size", 15)
 			leaderboard_rows.add_child(row)
 	show_page(leaderboard_page)

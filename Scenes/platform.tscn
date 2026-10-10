@@ -5,7 +5,7 @@
 [ext_resource type="Texture2D" path="res://Assets/jelly_platform.svg" id="3_texture"]
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_platform"]
-friction = 0.2
+friction = 1.0
 bounce = 0.05
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_rigid_platform"]

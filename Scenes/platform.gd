@@ -9,18 +9,21 @@ enum PlatformType {
 	STICKY_DOUGH,
 }
 
-const PLATFORM_HALF_HEIGHT := 6.0
-const STICKY_JUMP_SPEED := 500.0
-const SUPER_TRAMPOLINE_JUMP_SPEED := 1100.0
-const PLAYER_HALF_HEIGHT := 17.5
+const TUNING = preload("res://Scenes/game_tuning.gd")
+const PLATFORM_HALF_HEIGHT := TUNING.PLATFORM_HALF_HEIGHT
+const STICKY_GROUND_MOVEMENT_MULTIPLIER := TUNING.PLATFORM_STICKY_GROUND_MOVEMENT_MULTIPLIER
+const SUPER_TRAMPOLINE_JUMP_SPEED := TUNING.PLATFORM_SUPER_TRAMPOLINE_JUMP_SPEED
+const PLAYER_HALF_HEIGHT := TUNING.PLAYER_HALF_HEIGHT
+const LANDING_HORIZONTAL_RETAIN := TUNING.PLATFORM_LANDING_HORIZONTAL_RETAIN
+const LANDING_COLLISION_MARGIN := TUNING.PLATFORM_LANDING_COLLISION_MARGIN
 
 @export var platform_type: PlatformType = PlatformType.STANDARD
-@export var base_bounce_speed := 680.0
-@export var slingshot_rotation_degrees := -18.0
-@export_range(120.0, 220.0, 10.0) var min_standard_width := 150.0
-@export_range(180.0, 320.0, 10.0) var max_standard_width := 270.0
+@export var base_bounce_speed := TUNING.PLATFORM_STANDARD_BOUNCE_SPEED
+@export var slingshot_rotation_degrees := -TUNING.PLATFORM_RAMP_DEFAULT_ANGLE
+@export_range(TUNING.PLATFORM_WIDTH_MIN_EXPORT, TUNING.PLATFORM_WIDTH_MAX_EXPORT, TUNING.PLATFORM_WIDTH_MIN_EXPORT_STEP) var min_standard_width := TUNING.PLATFORM_DEFAULT_WIDTH_MIN
+@export_range(TUNING.PLATFORM_WIDE_WIDTH_MIN_EXPORT, TUNING.PLATFORM_WIDE_WIDTH_MAX_EXPORT, TUNING.PLATFORM_WIDE_WIDTH_EXPORT_STEP) var max_standard_width := TUNING.PLATFORM_DEFAULT_WIDTH_MAX
 @export_enum("None", "Left", "Right") var wall_attach_side := 0
-@export var world_width := 700.0
+@export var world_width := TUNING.WORLD_WIDTH
 
 @onready var softbody: SoftBody2D = $SoftBody
 @onready var rigid_platform: RigidBody2D = $RigidPlatform
@@ -30,6 +33,7 @@ const PLAYER_HALF_HEIGHT := 17.5
 @onready var collapse_timer: Timer = $CollapseTimer
 
 var players_passing_through: Dictionary = {}
+var fragile_used := false
 
 
 func _ready() -> void:
@@ -38,16 +42,17 @@ func _ready() -> void:
 	softbody.visible = uses_softbody
 	platform_visuals.visible = not uses_softbody
 	rigid_platform.visible = not uses_softbody
-	rigid_collision_shape.disabled = uses_softbody
+	rigid_collision_shape.disabled = uses_softbody and platform_type != PlatformType.STICKY_DOUGH
 	rigid_platform.set_meta("platform_owner", self)
+	apply_physics_materials()
 	if not uses_softbody:
 		rigid_visual.color = get_platform_color()
 		if platform_type == PlatformType.STANDARD:
 			var random_width := randf_range(minf(min_standard_width, max_standard_width), maxf(min_standard_width, max_standard_width))
 			if wall_attach_side == 1:
-				position.x = 12.0 + random_width / 2.0
+				position.x = TUNING.PLATFORM_WORLD_EDGE_INSET + random_width / 2.0
 			elif wall_attach_side == 2:
-				position.x = world_width - 12.0 - random_width / 2.0
+				position.x = world_width - TUNING.PLATFORM_WORLD_EDGE_INSET - random_width / 2.0
 			var wide_shape := rigid_collision_shape.shape.duplicate() as RectangleShape2D
 			wide_shape.size.x = random_width
 			rigid_collision_shape.shape = wide_shape
@@ -62,10 +67,14 @@ func _ready() -> void:
 	softbody.color = get_platform_color()
 	if platform_type == PlatformType.SLINGSHOT_RAMP:
 		rotation = deg_to_rad(slingshot_rotation_degrees)
+	softbody.vertex_interval = TUNING.PLATFORM_SOFTBODY_VERTEX_INTERVAL
+	softbody.mass = TUNING.PLATFORM_SOFTBODY_MASS
 	configure_softbody()
 	(softbody as SoftBody2D).initialize_for_platform()
 	for body_data in softbody.get_rigid_bodies():
 		body_data.rigidbody.set_meta("platform_owner", self)
+		if platform_type == PlatformType.STICKY_DOUGH:
+			body_data.rigidbody.collision_layer = 0
 	anchor_softbody_ends()
 	collapse_timer.timeout.connect(_on_collapse_timeout)
 
@@ -73,36 +82,62 @@ func _ready() -> void:
 func resolve_landing(player: CharacterBody2D, impact_velocity: Vector2, surface_normal: Vector2) -> void:
 	if impact_velocity.y <= 0.0:
 		return
+	if platform_type == PlatformType.FRAGILE and fragile_used:
+		return
 
 	var impact_speed := maxf(0.0, impact_velocity.dot(-surface_normal))
+	player.velocity.x *= LANDING_HORIZONTAL_RETAIN
 	match platform_type:
 		PlatformType.STANDARD:
 			settle_or_jump(player, get_manual_jump_speed(player))
 		PlatformType.SUPER_TRAMPOLINE:
-			player.velocity = surface_normal * SUPER_TRAMPOLINE_JUMP_SPEED
+			var launch_speed := SUPER_TRAMPOLINE_JUMP_SPEED
+			if player.has_method("get_run_scaled_jump_speed"):
+				launch_speed = player.get_run_scaled_jump_speed(launch_speed)
+			player.velocity = surface_normal * launch_speed
 			if player.has_method("increment_combo"):
 				player.increment_combo()
 		PlatformType.SLINGSHOT_RAMP:
-			var horizontal_direction := signf(player.velocity.x)
-			if is_zero_approx(horizontal_direction):
-				horizontal_direction = 1.0
-			var launch_direction := Vector2(horizontal_direction * 0.65, -0.76).normalized()
-			var launch_speed := clampf(maxf(base_bounce_speed * 1.4, impact_speed * 0.65), base_bounce_speed, 1250.0)
+			var horizontal_direction := 1.0 if global_position.x < world_width / 2.0 else -1.0
+			var launch_direction := Vector2(
+				horizontal_direction * TUNING.PLATFORM_RAMP_LAUNCH_HORIZONTAL_RATIO,
+				-TUNING.PLATFORM_RAMP_LAUNCH_VERTICAL_RATIO
+			).normalized()
+			var launch_speed := clampf(
+				maxf(base_bounce_speed * TUNING.PLATFORM_RAMP_MIN_LAUNCH_MULTIPLIER, impact_speed * TUNING.PLATFORM_RAMP_IMPACT_MULTIPLIER),
+				base_bounce_speed,
+				TUNING.PLATFORM_RAMP_MAX_LAUNCH_SPEED
+			)
 			player.velocity = launch_direction * launch_speed
+			if player.has_method("get_run_scaled_jump_speed"):
+				player.velocity.y = -player.get_run_scaled_jump_speed(absf(player.velocity.y))
 		PlatformType.FRAGILE:
 			settle_or_jump(player, get_manual_jump_speed(player))
-			collapse_timer.start(0.2)
-			rigid_visual.color = rigid_visual.color.darkened(0.35)
+			if player.velocity.y < 0.0:
+				on_player_jumped_from()
 		PlatformType.STICKY_DOUGH:
-			player.velocity.x *= 0.1
+			player.velocity.x *= TUNING.PLATFORM_STICKY_LANDING_HORIZONTAL_RETAIN
 			settle_or_jump(player, get_manual_jump_speed(player))
 			if player.has_method("reset_combo"):
 				player.reset_combo()
 
 
+func on_player_jumped_from() -> void:
+	if platform_type != PlatformType.FRAGILE or fragile_used:
+		return
+
+	fragile_used = true
+	collapse_timer.start(TUNING.PLATFORM_FRAGILE_COLLAPSE_DELAY)
+	rigid_visual.color = rigid_visual.color.darkened(0.35)
+	rigid_collision_shape.set_deferred("disabled", true)
+
+
 func settle_or_jump(player: CharacterBody2D, jump_speed: float) -> void:
 	if Input.is_action_just_pressed("ui_accept"):
-		player.velocity.y = -jump_speed
+		var launch_speed := jump_speed
+		if player.has_method("get_run_scaled_jump_speed"):
+			launch_speed = player.get_run_scaled_jump_speed(jump_speed)
+		player.velocity.y = -launch_speed
 	else:
 		player.velocity.y = 0.0
 
@@ -113,44 +148,61 @@ func get_manual_jump_speed(player: CharacterBody2D) -> float:
 		PlatformType.STANDARD:
 			return base_bounce_speed * gravity_compensation
 		PlatformType.FRAGILE:
-			return minf(base_bounce_speed * 0.8, 680.0) * gravity_compensation
+			return minf(base_bounce_speed * TUNING.PLATFORM_FRAGILE_JUMP_MULTIPLIER, TUNING.PLATFORM_FRAGILE_MAX_JUMP_SPEED) * gravity_compensation
 		PlatformType.STICKY_DOUGH:
-			return STICKY_JUMP_SPEED * gravity_compensation
+			return base_bounce_speed * gravity_compensation
 		_:
-			return 750.0 * gravity_compensation
+			return TUNING.PLATFORM_DEFAULT_SPECIAL_JUMP_SPEED * gravity_compensation
+
+
+func get_ground_movement_multiplier() -> float:
+	if platform_type == PlatformType.STICKY_DOUGH:
+		return STICKY_GROUND_MOVEMENT_MULTIPLIER
+	return 1.0
 
 
 func get_platform_color() -> Color:
 	match platform_type:
 		PlatformType.SUPER_TRAMPOLINE:
-			return Color(0.25, 0.8, 0.35)
+			return TUNING.PLATFORM_COLOR_TRAMPOLINE
 		PlatformType.SLINGSHOT_RAMP:
-			return Color(0.25, 0.55, 0.95)
+			return TUNING.PLATFORM_COLOR_SLINGSHOT
 		PlatformType.FRAGILE:
-			return Color(0.9, 0.25, 0.25)
+			return TUNING.PLATFORM_COLOR_FRAGILE
 		PlatformType.STICKY_DOUGH:
-			return Color(0.95, 0.78, 0.2)
+			return TUNING.PLATFORM_COLOR_STICKY
 		_:
-			return Color(0.55, 0.58, 0.62)
+			return TUNING.PLATFORM_COLOR_STANDARD
 
 
 func configure_softbody() -> void:
 	match platform_type:
 		PlatformType.SUPER_TRAMPOLINE:
-			softbody.stiffness = 12.0
-			softbody.damping = 1.2
+			softbody.stiffness = TUNING.PLATFORM_SUPER_TRAMPOLINE_STIFFNESS
+			softbody.damping = TUNING.PLATFORM_SUPER_TRAMPOLINE_DAMPING
 		PlatformType.SLINGSHOT_RAMP:
-			softbody.stiffness = 28.0
-			softbody.damping = 2.5
+			softbody.stiffness = TUNING.PLATFORM_SLINGSHOT_STIFFNESS
+			softbody.damping = TUNING.PLATFORM_SLINGSHOT_DAMPING
 		PlatformType.FRAGILE:
-			softbody.stiffness = 12.0
-			softbody.damping = 1.5
+			softbody.stiffness = TUNING.PLATFORM_FRAGILE_STIFFNESS
+			softbody.damping = TUNING.PLATFORM_FRAGILE_DAMPING
 		PlatformType.STICKY_DOUGH:
-			softbody.stiffness = 16.0
-			softbody.damping = 14.0
+			softbody.stiffness = TUNING.PLATFORM_STICKY_STIFFNESS
+			softbody.damping = TUNING.PLATFORM_STICKY_DAMPING
 		_:
-			softbody.stiffness = 24.0
-			softbody.damping = 4.0
+			softbody.stiffness = TUNING.PLATFORM_STANDARD_STIFFNESS
+			softbody.damping = TUNING.PLATFORM_STANDARD_DAMPING
+
+
+func apply_physics_materials() -> void:
+	var softbody_material := softbody.physics_material_override.duplicate() as PhysicsMaterial
+	softbody_material.friction = TUNING.PLATFORM_RIGID_FRICTION
+	softbody_material.bounce = TUNING.PLATFORM_RIGID_BOUNCE
+	softbody.physics_material_override = softbody_material
+	var rigid_material := rigid_platform.physics_material_override.duplicate() as PhysicsMaterial
+	rigid_material.friction = TUNING.PLATFORM_RIGID_FRICTION
+	rigid_material.bounce = TUNING.PLATFORM_RIGID_BOUNCE
+	rigid_platform.physics_material_override = rigid_material
 
 
 func is_softbody_platform() -> bool:
@@ -159,18 +211,18 @@ func is_softbody_platform() -> bool:
 
 func get_platform_collision_bodies() -> Array[PhysicsBody2D]:
 	var collision_bodies: Array[PhysicsBody2D] = []
-	if is_softbody_platform():
+	if is_softbody_platform() and platform_type != PlatformType.STICKY_DOUGH:
 		for body_data in softbody.get_rigid_bodies():
 			collision_bodies.append(body_data.rigidbody)
-	else:
+	if not is_softbody_platform() or platform_type == PlatformType.STICKY_DOUGH:
 		collision_bodies.append(rigid_platform)
 	return collision_bodies
 
 
 func set_player_pass_through(player: CharacterBody2D, moving_up: bool) -> void:
-	var surface_top_y := to_global(Vector2(0.0, -PLATFORM_HALF_HEIGHT)).y
-	var body_clear_threshold := surface_top_y + PLAYER_HALF_HEIGHT * 2.0 * 0.1
-	var should_pass_through := moving_up and player.global_position.y + PLAYER_HALF_HEIGHT > body_clear_threshold
+	var player_local_y := to_local(player.global_position).y
+	var is_above_landing_surface := player_local_y <= -PLATFORM_HALF_HEIGHT - PLAYER_HALF_HEIGHT + LANDING_COLLISION_MARGIN
+	var should_pass_through := moving_up or not is_above_landing_surface
 	var player_id := player.get_instance_id()
 	if players_passing_through.has(player_id) and players_passing_through[player_id] == should_pass_through:
 		return
@@ -181,6 +233,34 @@ func set_player_pass_through(player: CharacterBody2D, moving_up: bool) -> void:
 			player.add_collision_exception_with(rigid_body)
 		else:
 			player.remove_collision_exception_with(rigid_body)
+
+
+func was_passed_upward(previous_player_y: float, current_player_y: float, player_global_x: float) -> bool:
+	var previous_bottom := to_local(Vector2(player_global_x, previous_player_y + PLAYER_HALF_HEIGHT))
+	var current_bottom := to_local(Vector2(player_global_x, current_player_y + PLAYER_HALF_HEIGHT))
+	if previous_bottom.y <= -PLATFORM_HALF_HEIGHT or current_bottom.y > -PLATFORM_HALF_HEIGHT:
+		return false
+
+	var local_player_x := to_local(Vector2(player_global_x, current_player_y)).x
+	var platform_min_x := -60.0
+	var platform_max_x := 60.0
+	if is_softbody_platform():
+		var polygon_points := softbody.polygon
+		if polygon_points.is_empty():
+			return false
+		platform_min_x = polygon_points[0].x
+		platform_max_x = polygon_points[0].x
+		for point in polygon_points:
+			platform_min_x = minf(platform_min_x, point.x)
+			platform_max_x = maxf(platform_max_x, point.x)
+	else:
+		var rectangle := rigid_collision_shape.shape as RectangleShape2D
+		if rectangle == null:
+			return false
+		platform_min_x = -rectangle.size.x / 2.0
+		platform_max_x = rectangle.size.x / 2.0
+
+	return local_player_x + PLAYER_HALF_HEIGHT >= platform_min_x and local_player_x - PLAYER_HALF_HEIGHT <= platform_max_x
 
 
 func anchor_softbody_ends() -> void:
