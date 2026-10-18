@@ -6,7 +6,7 @@ extends CharacterBody2D
 # - wall collisions convert horizontal speed into upward rebound
 # - fast drop increases gravity for sharp impact timing
 
-const TUNING = preload("res://Scenes/game_tuning.gd")
+const TUNING = preload("res://Scenes/Gameplay/game_tuning.gd")
 const MAX_HORIZONTAL_SPEED := TUNING.PLAYER_MAX_HORIZONTAL_SPEED
 const HORIZONTAL_ACCELERATION := TUNING.PLAYER_HORIZONTAL_ACCELERATION
 const AIR_CONTROL_MULTIPLIER := TUNING.PLAYER_AIR_CONTROL_MULTIPLIER

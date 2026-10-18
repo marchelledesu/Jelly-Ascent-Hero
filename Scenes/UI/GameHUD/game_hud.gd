@@ -1,7 +1,7 @@
 extends CanvasLayer
 
-const LEADERBOARD_STORE = preload("res://Scenes/local_leaderboard.gd")
-const TUNING = preload("res://Scenes/game_tuning.gd")
+const LEADERBOARD_STORE = preload("res://Scenes/UI/Leaderboard/leaderboard_store.gd")
+const TUNING = preload("res://Scenes/Gameplay/game_tuning.gd")
 
 @export var player_path: NodePath
 

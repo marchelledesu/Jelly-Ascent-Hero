@@ -1,3 +1,4 @@
+@tool
 extends SoftBody2D
 
 

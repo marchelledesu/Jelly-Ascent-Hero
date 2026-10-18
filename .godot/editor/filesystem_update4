@@ -1,6 +1,4 @@
-res://Scenes/player.gd
-res://Scenes/platform.gd
-res://Scenes/platform.tscn
-res://Scenes/level_controller.gd
-res://Scenes/test_hud.gd
-res://Scenes/local_leaderboard.gd
+res://Scenes/Gameplay/gameplay.tscn
+res://Scenes/Gameplay/gameplay.gd
+res://Scenes/Gameplay/game_tuning.gd
+res://Scenes/Platforms/Fragile/fragile_platform.tscn

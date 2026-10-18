@@ -1,7 +1,7 @@
 extends RefCounted
 
 
-const TUNING = preload("res://Scenes/game_tuning.gd")
+const TUNING = preload("res://Scenes/Gameplay/game_tuning.gd")
 const SAVE_PATH := TUNING.SCORE_SAVE_PATH
 const MAX_ENTRIES := TUNING.LEADERBOARD_MAX_ENTRIES
 const HEIGHT_SCORE_PER_METER := TUNING.SCORE_HEIGHT_PER_METER

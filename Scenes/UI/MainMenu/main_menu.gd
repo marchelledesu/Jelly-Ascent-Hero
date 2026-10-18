@@ -1,8 +1,8 @@
 extends Control
 
 
-const LEVEL_SCENE := "res://Scenes/Level_1.tscn"
-const LEADERBOARD_STORE = preload("res://Scenes/local_leaderboard.gd")
+const LEVEL_SCENE := "res://Scenes/Gameplay/gameplay.tscn"
+const LEADERBOARD_STORE = preload("res://Scenes/UI/Leaderboard/leaderboard_store.gd")
 
 var main_page: Control
 var tutorial_page: Control
@@ -96,20 +96,20 @@ func create_page() -> Control:
 	return page
 
 
-func add_heading(page: Control, text: String, size: int) -> void:
+func add_heading(page: Control, text: String, font_size: int) -> void:
 	var heading := Label.new()
 	heading.text = text
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	heading.add_theme_font_size_override("font_size", size)
+	heading.add_theme_font_size_override("font_size", font_size)
 	heading.add_theme_color_override("font_color", Color(0.46, 0.92, 0.75))
 	page.add_child(heading)
 
 
-func add_subheading(page: Control, text: String, size: int) -> void:
+func add_subheading(page: Control, text: String, font_size: int) -> void:
 	var subheading := Label.new()
 	subheading.text = text
 	subheading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subheading.add_theme_font_size_override("font_size", size)
+	subheading.add_theme_font_size_override("font_size", font_size)
 	subheading.add_theme_color_override("font_color", Color(0.77, 0.89, 0.85))
 	page.add_child(subheading)
 

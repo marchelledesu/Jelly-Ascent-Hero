@@ -1,7 +1,7 @@
 [gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" path="res://Scenes/platform.gd" id="1_script"]
-[ext_resource type="Script" path="res://Scenes/platform_softbody.gd" id="2_softbody"]
+[ext_resource type="Script" path="res://Scenes/Platforms/Base/platform.gd" id="1_script"]
+[ext_resource type="Script" path="res://Scenes/Platforms/Base/platform_softbody.gd" id="2_softbody"]
 [ext_resource type="Texture2D" path="res://Assets/jelly_platform.svg" id="3_texture"]
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_platform"]
@@ -41,6 +41,10 @@ shape = SubResource("RectangleShape2D_rigid_platform")
 
 [node name="RigidPlatformVisual" type="Polygon2D" parent="PlatformVisuals"]
 polygon = PackedVector2Array(-60, -6, 60, -6, 60, 6, -60, 6)
+
+[node name="SpriteSlots" type="Node2D" parent="."]
+
+[node name="PlatformSprite" type="Sprite2D" parent="SpriteSlots"]
 
 [node name="CollapseTimer" type="Timer" parent="."]
 wait_time = 0.2

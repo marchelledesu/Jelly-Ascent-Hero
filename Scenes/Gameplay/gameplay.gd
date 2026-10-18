@@ -1,12 +1,18 @@
 extends Node2D
 
 
-const PLATFORM_SCENE: PackedScene = preload("res://Scenes/platform.tscn")
-const TUNING = preload("res://Scenes/game_tuning.gd")
-const MAIN_MENU_SCENE := "res://Scenes/MainMenu.tscn"
-const LEADERBOARD_STORE = preload("res://Scenes/local_leaderboard.gd")
-const PAUSE_INPUT_SCRIPT = preload("res://Scenes/pause_input.gd")
-const DEV_TOOLS_SCRIPT = preload("res://Scenes/dev_tools.gd")
+const PLATFORM_SCENES: Array[PackedScene] = [
+	preload("res://Scenes/Platforms/Standard/standard_platform.tscn"),
+	preload("res://Scenes/Platforms/Trampoline/trampoline_platform.tscn"),
+	preload("res://Scenes/Platforms/Slingshot/slingshot_platform.tscn"),
+	preload("res://Scenes/Platforms/Fragile/fragile_platform.tscn"),
+	preload("res://Scenes/Platforms/Sticky/sticky_platform.tscn"),
+]
+const TUNING = preload("res://Scenes/Gameplay/game_tuning.gd")
+const MAIN_MENU_SCENE := "res://Scenes/UI/MainMenu/main_menu.tscn"
+const LEADERBOARD_STORE = preload("res://Scenes/UI/Leaderboard/leaderboard_store.gd")
+const PAUSE_INPUT_SCRIPT = preload("res://Scenes/Gameplay/pause_input.gd")
+const DEV_TOOLS_SCRIPT = preload("res://Scenes/Gameplay/dev_tools.gd")
 
 const WORLD_WIDTH := TUNING.WORLD_WIDTH
 const WORLD_CENTER_X := WORLD_WIDTH / 2.0
@@ -43,7 +49,7 @@ enum ChunkPattern {
 	FRAGILE_SPRINT,
 }
 
-@onready var player: CharacterBody2D = $CharacterBody2D
+@onready var player: CharacterBody2D = $Player
 @onready var left_wall: StaticBody2D = $LeftWall
 @onready var right_wall: StaticBody2D = $RightWall
 @onready var world_visuals: Node2D = $WorldVisuals
@@ -56,6 +62,7 @@ var highest_platform_y := 0.0
 var acid_floor: Area2D
 var acid_speed := TUNING.ACID_INITIAL_SPEED
 var acid_acceleration := TUNING.ACID_ACCELERATION
+var acid_fall_follow_distance := 0.0
 var game_over := false
 var chunk_index := 0
 var platforms_since_special := 0
@@ -67,7 +74,7 @@ var biome_banner: Label
 var biome_status: Label
 var biome_banner_timer: Timer
 var biome_ambience: Array[Dictionary] = []
-var dev_tools: DevTools
+var dev_tools: CanvasLayer
 var debug_biome_override := -1
 var pause_overlay: CanvasLayer
 var game_over_overlay: CanvasLayer
@@ -106,10 +113,9 @@ func _physics_process(delta: float) -> void:
 	run_time += delta
 	update_wall_positions()
 	update_run_record()
+	update_acid_floor(delta)
 	update_biome()
 	apply_biome_effects(delta)
-	acid_speed += acid_acceleration * delta
-	acid_floor.global_position.y -= acid_speed * delta
 	spawn_chunks_ahead()
 	remove_distant_platforms()
 
@@ -127,6 +133,36 @@ func update_wall_positions() -> void:
 	left_wall.global_position.y = player.global_position.y
 	right_wall.global_position.y = player.global_position.y
 	world_visuals.global_position.y = player.global_position.y
+
+
+func update_acid_floor(delta: float) -> void:
+	acid_speed = minf(
+		acid_speed + acid_acceleration * delta,
+		TUNING.ACID_MAX_CHASE_SPEED
+	)
+	var gap := acid_floor.global_position.y - player.global_position.y
+	var chase_speed := minf(
+		acid_speed + maxf(0.0, gap - TUNING.ACID_FOLLOW_DISTANCE) * TUNING.ACID_CHASE_SPEED_PER_PIXEL,
+		TUNING.ACID_MAX_CHASE_SPEED
+	)
+
+	var is_falling := not player.is_on_floor() and player.velocity.y > 0.0
+	if is_falling:
+		if acid_fall_follow_distance < TUNING.ACID_FALL_FOLLOW_MAX_DISTANCE:
+			acid_fall_follow_distance = minf(
+				acid_fall_follow_distance + player.velocity.y * delta,
+				TUNING.ACID_FALL_FOLLOW_MAX_DISTANCE
+			)
+			var target_y := player.global_position.y + TUNING.ACID_FALL_FOLLOW_DISTANCE
+			var follow_speed := player.velocity.y + TUNING.ACID_FALL_FOLLOW_SPEED_BONUS
+			acid_floor.global_position.y = move_toward(
+				acid_floor.global_position.y,
+				target_y,
+				follow_speed * delta
+			)
+	else:
+		acid_fall_follow_distance = 0.0
+		acid_floor.global_position.y -= chase_speed * delta
 
 
 func spawn_chunks_ahead() -> void:
@@ -184,7 +220,7 @@ func spawn_chunk() -> void:
 				previous_platform_x + TUNING.PLATFORM_STICKY_FOLLOWUP_HORIZONTAL_RANGE
 			)
 			platform_x = clampf(platform_x, PLATFORM_X_MIN, PLATFORM_X_MAX)
-		var platform := PLATFORM_SCENE.instantiate() as Node2D
+		var platform := PLATFORM_SCENES[platform_type].instantiate() as Node2D
 		platform.set("platform_type", platform_type)
 		platform.set("wall_attach_side", wall_attach_side)
 		platform.set("world_width", WORLD_WIDTH)
@@ -233,7 +269,7 @@ func choose_platform_x(pattern: int, platform_index: int, altitude_progress: flo
 			return clampf(rng.randf_range(WORLD_CENTER_X - horizontal_offset, WORLD_CENTER_X + horizontal_offset), PLATFORM_X_MIN, PLATFORM_X_MAX)
 
 
-func choose_platform_type(pattern: int, platform_index: int, altitude_progress: float, biome_index: int) -> int:
+func choose_platform_type(pattern: int, platform_index: int, altitude_progress: float, biome_index: int) -> PlatformType:
 	platforms_since_special += 1
 	var standard_streak := roundi(lerpf(TUNING.BIOME_STANDARD_STREAK_LOW_ALTITUDE, TUNING.BIOME_STANDARD_STREAK_HIGH_ALTITUDE, altitude_progress))
 	if platforms_since_special <= standard_streak:
@@ -269,7 +305,7 @@ func choose_platform_type(pattern: int, platform_index: int, altitude_progress: 
 
 	var type_roll := rng.randf()
 	if preferred_type != -1 and type_roll < TUNING.PLATFORM_PREFERRED_SPECIAL_SELECTION_CHANCE:
-		return preferred_type
+		return preferred_type as PlatformType
 	match biome_index:
 		1:
 			if type_roll < TUNING.PLATFORM_WINDY_TRAMPOLINE_WEIGHT:
@@ -427,29 +463,29 @@ func update_biome_ambience(delta: float) -> void:
 		var node: Node2D = ambience["node"]
 		if not node.visible:
 			continue
-		var position := node.position
+		var ambience_position := node.position
 		var speed := float(ambience["speed"])
 		var phase := float(ambience["phase"])
 		match int(ambience["biome"]):
 			1:
 				var gust_direction := signf(sin(run_time * TUNING.WIND_GUST_FREQUENCY + phase))
-				position.x += speed * (gust_direction if not is_zero_approx(gust_direction) else 1.0) * delta
-				position.y += sin(run_time * TUNING.WIND_STREAK_DRIFT_FREQUENCY + phase) * TUNING.WIND_STREAK_DRIFT_AMPLITUDE * delta
-				if position.x < -TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN:
-					position.x = viewport_size.x + TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN
-				elif position.x > viewport_size.x + TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN:
-					position.x = -TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN
+				ambience_position.x += speed * (gust_direction if not is_zero_approx(gust_direction) else 1.0) * delta
+				ambience_position.y += sin(run_time * TUNING.WIND_STREAK_DRIFT_FREQUENCY + phase) * TUNING.WIND_STREAK_DRIFT_AMPLITUDE * delta
+				if ambience_position.x < -TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN:
+					ambience_position.x = viewport_size.x + TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN
+				elif ambience_position.x > viewport_size.x + TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN:
+					ambience_position.x = -TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN
 			2:
-				position.y += speed * delta
-				position.x += sin(run_time * TUNING.SNOW_PARTICLE_SWAY_FREQUENCY + phase) * TUNING.SNOW_PARTICLE_SWAY_AMPLITUDE * delta
-				if position.y > viewport_size.y + TUNING.BIOME_PARTICLE_VERTICAL_MARGIN:
-					position.y = -TUNING.BIOME_PARTICLE_VERTICAL_MARGIN
+				ambience_position.y += speed * delta
+				ambience_position.x += sin(run_time * TUNING.SNOW_PARTICLE_SWAY_FREQUENCY + phase) * TUNING.SNOW_PARTICLE_SWAY_AMPLITUDE * delta
+				if ambience_position.y > viewport_size.y + TUNING.BIOME_PARTICLE_VERTICAL_MARGIN:
+					ambience_position.y = -TUNING.BIOME_PARTICLE_VERTICAL_MARGIN
 			3:
-				position.y -= speed * delta
-				position.x += sin(run_time * TUNING.ABYSS_MOTE_SWAY_FREQUENCY + phase) * TUNING.ABYSS_MOTE_SWAY_AMPLITUDE * delta
-				if position.y < -TUNING.BIOME_PARTICLE_VERTICAL_MARGIN:
-					position.y = viewport_size.y + TUNING.BIOME_PARTICLE_VERTICAL_MARGIN
-		node.position = position
+				ambience_position.y -= speed * delta
+				ambience_position.x += sin(run_time * TUNING.ABYSS_MOTE_SWAY_FREQUENCY + phase) * TUNING.ABYSS_MOTE_SWAY_AMPLITUDE * delta
+				if ambience_position.y < -TUNING.BIOME_PARTICLE_VERTICAL_MARGIN:
+					ambience_position.y = viewport_size.y + TUNING.BIOME_PARTICLE_VERTICAL_MARGIN
+		node.position = ambience_position
 
 
 func create_biome_ui() -> void:
@@ -495,23 +531,23 @@ func create_biome_ui() -> void:
 
 
 func create_dev_tools() -> void:
-	dev_tools = DEV_TOOLS_SCRIPT.new() as DevTools
+	dev_tools = DEV_TOOLS_SCRIPT.new() as CanvasLayer
 	add_child(dev_tools)
-	dev_tools.setup(self)
-	dev_tools.platform_requested.connect(dev_spawn_platform)
-	dev_tools.biome_requested.connect(dev_set_biome)
-	dev_tools.reset_biome_requested.connect(dev_reset_biome)
-	dev_tools.launch_requested.connect(dev_test_jump)
-	dev_tools.wall_bounce_requested.connect(dev_test_wall_bounce)
-	dev_tools.combo_requested.connect(dev_add_combo)
-	dev_tools.stored_bonus_requested.connect(dev_grant_stored_bonus)
-	dev_tools.end_run_requested.connect(dev_end_run)
+	dev_tools.call("setup", self)
+	dev_tools.connect("platform_requested", dev_spawn_platform)
+	dev_tools.connect("biome_requested", dev_set_biome)
+	dev_tools.connect("reset_biome_requested", dev_reset_biome)
+	dev_tools.connect("launch_requested", dev_test_jump)
+	dev_tools.connect("wall_bounce_requested", dev_test_wall_bounce)
+	dev_tools.connect("combo_requested", dev_add_combo)
+	dev_tools.connect("stored_bonus_requested", dev_grant_stored_bonus)
+	dev_tools.connect("end_run_requested", dev_end_run)
 
 
 func dev_spawn_platform(platform_type: int) -> void:
 	if game_over or platform_type < PlatformType.STANDARD or platform_type > PlatformType.STICKY_DOUGH:
 		return
-	var platform := PLATFORM_SCENE.instantiate() as Node2D
+	var platform := PLATFORM_SCENES[platform_type].instantiate() as Node2D
 	platform.set("platform_type", platform_type)
 	platform.set("world_width", WORLD_WIDTH)
 	var spawn_x := clampf(player.global_position.x, PLATFORM_X_MIN, PLATFORM_X_MAX)

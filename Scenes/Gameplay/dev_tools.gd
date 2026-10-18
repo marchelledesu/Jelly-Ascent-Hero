@@ -1,5 +1,4 @@
 extends CanvasLayer
-class_name DevTools
 
 signal platform_requested(platform_type: int)
 signal biome_requested(biome_index: int)
