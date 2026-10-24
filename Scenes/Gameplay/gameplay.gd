@@ -6,7 +6,6 @@ const PLATFORM_SCENES: Array[PackedScene] = [
 	preload("res://Scenes/Platforms/Trampoline/trampoline_platform.tscn"),
 	preload("res://Scenes/Platforms/Slingshot/slingshot_platform.tscn"),
 	preload("res://Scenes/Platforms/Fragile/fragile_platform.tscn"),
-	preload("res://Scenes/Platforms/Sticky/sticky_platform.tscn"),
 ]
 const TUNING = preload("res://Scenes/Gameplay/game_tuning.gd")
 const MAIN_MENU_SCENE := "res://Scenes/UI/MainMenu/main_menu.tscn"
@@ -18,7 +17,7 @@ const WORLD_WIDTH := TUNING.WORLD_WIDTH
 const WORLD_CENTER_X := WORLD_WIDTH / 2.0
 const PLATFORM_X_MIN := TUNING.PLATFORM_X_MIN
 const PLATFORM_X_MAX := WORLD_WIDTH - PLATFORM_X_MIN
-const FULL_PLATFORM_WIDTH := WORLD_WIDTH - TUNING.FULL_PLATFORM_SIDE_MARGIN
+const FULL_PLATFORM_WIDTH := WORLD_WIDTH
 const CHUNK_COUNT := TUNING.CHUNK_COUNT
 const SPAWN_AHEAD_DISTANCE := TUNING.SPAWN_AHEAD_DISTANCE
 const CLEANUP_BELOW_PLAYER := TUNING.CLEANUP_BELOW_PLAYER
@@ -33,12 +32,18 @@ const BIOME_NAMES: Array[String] = TUNING.BIOME_NAMES
 const BIOME_TINTS: Array[Color] = TUNING.BIOME_TINTS
 const BIOME_CHALLENGES: Array[String] = TUNING.BIOME_CHALLENGES
 
+const BIOME_BACKGROUNDS: Array[Color] = [
+	Color(0.32, 0.38, 0.58, 1.0),
+	Color(0.10, 0.12, 0.22, 1.0),
+	Color(0.12, 0.18, 0.28, 1.0),
+	Color(0.06, 0.04, 0.12, 1.0),
+]
+
 enum PlatformType {
 	STANDARD,
 	SUPER_TRAMPOLINE,
 	SLINGSHOT_RAMP,
 	FRAGILE,
-	STICKY_DOUGH,
 }
 
 enum ChunkPattern {
@@ -63,6 +68,15 @@ var acid_floor: Area2D
 var acid_speed := TUNING.ACID_INITIAL_SPEED
 var acid_acceleration := TUNING.ACID_ACCELERATION
 var acid_fall_follow_distance := 0.0
+var acid_time := 0.0
+var acid_surface: Polygon2D
+var acid_body: Polygon2D
+var acid_mid: Polygon2D
+var background_layer: CanvasLayer
+var standard_deco: Node2D
+var background_rect: ColorRect
+var acid_paused := false
+var acid_delay_remaining := 5.0
 var game_over := false
 var chunk_index := 0
 var platforms_since_special := 0
@@ -97,6 +111,7 @@ func _ready() -> void:
 		highest_platform_y = minf(highest_platform_y, existing_platform.global_position.y)
 
 	create_acid_floor()
+	create_background()
 	create_game_over_overlay()
 	create_pause_overlay()
 	create_biome_ui()
@@ -136,6 +151,14 @@ func update_wall_positions() -> void:
 
 
 func update_acid_floor(delta: float) -> void:
+	acid_time += delta
+	if is_instance_valid(acid_surface):
+		rebuild_acid_surface(acid_time)
+	if acid_paused:
+		return
+	if acid_delay_remaining > 0.0:
+		acid_delay_remaining -= delta
+		return
 	acid_speed = minf(
 		acid_speed + acid_acceleration * delta,
 		TUNING.ACID_MAX_CHASE_SPEED
@@ -181,9 +204,6 @@ func spawn_chunk() -> void:
 	min_gap += BIOME_GAP_BONUSES[biome_index]
 	max_gap += BIOME_GAP_EXTRA_BONUSES[biome_index]
 	var pattern := rng.randi_range(0, ChunkPattern.size() - 1)
-	var previous_platform_type := PlatformType.STANDARD
-	var previous_platform_x := WORLD_CENTER_X
-
 	for platform_index in CHUNK_COUNT:
 		var vertical_gap := rng.randf_range(min_gap, max_gap)
 		var next_platform_y := highest_platform_y - vertical_gap
@@ -196,13 +216,10 @@ func spawn_chunk() -> void:
 			next_platform_y = start_y - next_platform_biome * BIOME_HEIGHT_METERS * PIXELS_PER_METER
 		highest_platform_y = next_platform_y
 
-		var is_sticky_followup := previous_platform_type == PlatformType.STICKY_DOUGH and not is_biome_transition
 		var platform_type := PlatformType.STANDARD
-		if is_sticky_followup:
-			platforms_since_special += 1
-		elif not is_biome_transition:
+		if not is_biome_transition:
 			platform_type = choose_platform_type(pattern, platform_index, altitude_progress, biome_index)
-		if platform_index == CHUNK_COUNT - 1 and platform_type in [PlatformType.STICKY_DOUGH, PlatformType.FRAGILE]:
+		if platform_index == CHUNK_COUNT - 1 and platform_type == PlatformType.FRAGILE:
 			platform_type = PlatformType.STANDARD
 			platforms_since_special += 1
 		var platform_x := WORLD_CENTER_X if is_biome_transition else choose_platform_x(pattern, platform_index, altitude_progress)
@@ -213,13 +230,6 @@ func spawn_chunk() -> void:
 			altitude_progress
 		):
 			wall_attach_side = 1 if rng.randf() < TUNING.PLATFORM_WALL_ATTACH_SIDE_CHANCE else 2
-		if is_sticky_followup:
-			platform_x = clampf(
-				platform_x,
-				previous_platform_x - TUNING.PLATFORM_STICKY_FOLLOWUP_HORIZONTAL_RANGE,
-				previous_platform_x + TUNING.PLATFORM_STICKY_FOLLOWUP_HORIZONTAL_RANGE
-			)
-			platform_x = clampf(platform_x, PLATFORM_X_MIN, PLATFORM_X_MAX)
 		var platform := PLATFORM_SCENES[platform_type].instantiate() as Node2D
 		platform.set("platform_type", platform_type)
 		platform.set("wall_attach_side", wall_attach_side)
@@ -233,13 +243,11 @@ func spawn_chunk() -> void:
 			var ramp_on_left := rng.randf() < TUNING.PLATFORM_RAMP_SIDE_CHANCE
 			platform_x = PLATFORM_X_MIN if ramp_on_left else PLATFORM_X_MAX
 			var ramp_angle := rng.randf_range(TUNING.PLATFORM_RAMP_MIN_ANGLE, TUNING.PLATFORM_RAMP_MAX_ANGLE)
-			platform.set("slingshot_rotation_degrees", -ramp_angle if ramp_on_left else ramp_angle)
+			platform.set("slingshot_rotation_degrees", -ramp_angle)
+			platform.set("slingshot_mirror", not ramp_on_left)
 		platform.position = Vector2(platform_x, highest_platform_y)
 		platform.add_to_group("platform")
 		add_child(platform)
-		previous_platform_type = platform_type
-		previous_platform_x = platform_x
-
 	chunk_index += 1
 
 
@@ -335,7 +343,8 @@ func choose_platform_type(pattern: int, platform_index: int, altitude_progress: 
 				return PlatformType.SLINGSHOT_RAMP
 			if type_roll < TUNING.PLATFORM_STANDARD_FRAGILE_WEIGHT:
 				return PlatformType.FRAGILE
-	return PlatformType.STICKY_DOUGH
+	platforms_since_special += 1
+	return PlatformType.STANDARD
 
 
 func get_biome_index(altitude_meters: float) -> int:
@@ -387,6 +396,8 @@ func apply_biome_effects(delta: float) -> void:
 		)
 		player.apply_wind(gust_strength * WIND_GUST_ACCELERATION, delta)
 	biome_tint.color = biome_tint.color.lerp(BIOME_TINTS[current_biome], 1.0 - exp(-TUNING.BIOME_TINT_TRANSITION_SPEED * delta))
+	if background_rect != null:
+		background_rect.color = background_rect.color.lerp(BIOME_BACKGROUNDS[current_biome], 1.0 - exp(-TUNING.BIOME_TINT_TRANSITION_SPEED * delta))
 
 
 func create_biome_ambience(container: CanvasLayer) -> void:
@@ -403,6 +414,7 @@ func create_biome_ambience(container: CanvasLayer) -> void:
 		biome_ambience.append({
 			"node": streak,
 			"biome": 1,
+			"style": 0,
 			"speed": rng.randf_range(TUNING.WIND_STREAK_MIN_SPEED, TUNING.WIND_STREAK_MAX_SPEED),
 			"phase": rng.randf_range(0.0, TAU),
 		})
@@ -421,6 +433,7 @@ func create_biome_ambience(container: CanvasLayer) -> void:
 		biome_ambience.append({
 			"node": snowflake,
 			"biome": 2,
+			"style": 1,
 			"speed": rng.randf_range(TUNING.SNOW_PARTICLE_MIN_SPEED, TUNING.SNOW_PARTICLE_MAX_SPEED),
 			"phase": rng.randf_range(0.0, TAU),
 		})
@@ -439,9 +452,104 @@ func create_biome_ambience(container: CanvasLayer) -> void:
 		biome_ambience.append({
 			"node": ember,
 			"biome": 3,
+			"style": 2,
 			"speed": rng.randf_range(TUNING.ABYSS_MOTE_MIN_SPEED, TUNING.ABYSS_MOTE_MAX_SPEED),
 			"phase": rng.randf_range(0.0, TAU),
 		})
+
+	# Forest leaves (biome 0)
+	for index in 16:
+		var leaf := Polygon2D.new()
+		var size := rng.randf_range(2.0, 4.5)
+		leaf.polygon = PackedVector2Array([
+			Vector2(0.0, -size),
+			Vector2(size * 0.7, 0.0),
+			Vector2(0.0, size * 0.6),
+			Vector2(-size * 0.7, 0.0),
+		])
+		leaf.color = Color(rng.randf_range(0.2, 0.45), rng.randf_range(0.55, 0.85), rng.randf_range(0.15, 0.4), rng.randf_range(0.4, 0.75))
+		container.add_child(leaf)
+		biome_ambience.append({
+			"node": leaf,
+			"biome": 0,
+			"style": 3,
+			"speed": rng.randf_range(40.0, 90.0),
+			"phase": rng.randf_range(0.0, TAU),
+		})
+
+	# Fireflies (biome 0)
+	for index in 12:
+		var fly := Polygon2D.new()
+		var size := rng.randf_range(1.2, 2.4)
+		var pts := PackedVector2Array()
+		for i in 6:
+			var a := TAU * float(i) / 6.0
+			pts.append(Vector2(cos(a), sin(a)) * size)
+		fly.polygon = pts
+		fly.color = Color(0.85, 1.0, 0.55, rng.randf_range(0.5, 0.9))
+		container.add_child(fly)
+		biome_ambience.append({
+			"node": fly,
+			"biome": 0,
+			"style": 4,
+			"speed": rng.randf_range(12.0, 30.0),
+			"phase": rng.randf_range(0.0, TAU),
+		})
+
+	# Dust motes (biome 1)
+	for index in 14:
+		var dust := Polygon2D.new()
+		var size := rng.randf_range(0.8, 1.8)
+		dust.polygon = PackedVector2Array([
+			Vector2(-size, -size), Vector2(size, -size),
+			Vector2(size, size), Vector2(-size, size),
+		])
+		dust.color = Color(0.85, 0.92, 1.0, rng.randf_range(0.2, 0.45))
+		container.add_child(dust)
+		biome_ambience.append({
+			"node": dust,
+			"biome": 1,
+			"style": 5,
+			"speed": rng.randf_range(60.0, 140.0),
+			"phase": rng.randf_range(0.0, TAU),
+		})
+
+	# Ice sparkles (biome 2)
+	for index in 12:
+		var spark := Polygon2D.new()
+		var size := rng.randf_range(1.0, 2.2)
+		spark.polygon = PackedVector2Array([
+			Vector2(0.0, -size), Vector2(size * 0.35, 0.0),
+			Vector2(0.0, size), Vector2(-size * 0.35, 0.0),
+		])
+		spark.color = Color(0.9, 0.95, 1.0, rng.randf_range(0.4, 0.85))
+		container.add_child(spark)
+		biome_ambience.append({
+			"node": spark,
+			"biome": 2,
+			"style": 6,
+			"speed": rng.randf_range(0.0, 0.0),
+			"phase": rng.randf_range(0.0, TAU),
+		})
+
+	# Purple wisps (biome 3)
+	for index in 10:
+		var wisp := Polygon2D.new()
+		var size := rng.randf_range(1.5, 3.0)
+		wisp.polygon = PackedVector2Array([
+			Vector2(0.0, -size * 1.6), Vector2(size * 0.5, 0.0),
+			Vector2(0.0, size * 1.6), Vector2(-size * 0.5, 0.0),
+		])
+		wisp.color = Color(0.75, 0.55, 1.0, rng.randf_range(0.25, 0.55))
+		container.add_child(wisp)
+		biome_ambience.append({
+			"node": wisp,
+			"biome": 3,
+			"style": 7,
+			"speed": rng.randf_range(20.0, 45.0),
+			"phase": rng.randf_range(0.0, TAU),
+		})
+
 
 	for ambience in biome_ambience:
 		var node: Node2D = ambience["node"]
@@ -453,6 +561,8 @@ func set_biome_ambience(biome_index: int) -> void:
 	for ambience in biome_ambience:
 		var node: Node2D = ambience["node"]
 		node.visible = int(ambience["biome"]) == biome_index
+	if standard_deco != null:
+		standard_deco.visible = (biome_index == 0)
 
 
 func update_biome_ambience(delta: float) -> void:
@@ -466,8 +576,8 @@ func update_biome_ambience(delta: float) -> void:
 		var ambience_position := node.position
 		var speed := float(ambience["speed"])
 		var phase := float(ambience["phase"])
-		match int(ambience["biome"]):
-			1:
+		match int(ambience["style"]):
+			0:
 				var gust_direction := signf(sin(run_time * TUNING.WIND_GUST_FREQUENCY + phase))
 				ambience_position.x += speed * (gust_direction if not is_zero_approx(gust_direction) else 1.0) * delta
 				ambience_position.y += sin(run_time * TUNING.WIND_STREAK_DRIFT_FREQUENCY + phase) * TUNING.WIND_STREAK_DRIFT_AMPLITUDE * delta
@@ -475,17 +585,112 @@ func update_biome_ambience(delta: float) -> void:
 					ambience_position.x = viewport_size.x + TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN
 				elif ambience_position.x > viewport_size.x + TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN:
 					ambience_position.x = -TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN
-			2:
+			1:
 				ambience_position.y += speed * delta
 				ambience_position.x += sin(run_time * TUNING.SNOW_PARTICLE_SWAY_FREQUENCY + phase) * TUNING.SNOW_PARTICLE_SWAY_AMPLITUDE * delta
 				if ambience_position.y > viewport_size.y + TUNING.BIOME_PARTICLE_VERTICAL_MARGIN:
 					ambience_position.y = -TUNING.BIOME_PARTICLE_VERTICAL_MARGIN
-			3:
+			2:
 				ambience_position.y -= speed * delta
 				ambience_position.x += sin(run_time * TUNING.ABYSS_MOTE_SWAY_FREQUENCY + phase) * TUNING.ABYSS_MOTE_SWAY_AMPLITUDE * delta
 				if ambience_position.y < -TUNING.BIOME_PARTICLE_VERTICAL_MARGIN:
 					ambience_position.y = viewport_size.y + TUNING.BIOME_PARTICLE_VERTICAL_MARGIN
+			3:
+				ambience_position.y += speed * delta
+				ambience_position.x += sin(run_time * 1.1 + phase) * 14.0 * delta
+				if ambience_position.y > viewport_size.y + TUNING.BIOME_PARTICLE_VERTICAL_MARGIN:
+					ambience_position.y = -TUNING.BIOME_PARTICLE_VERTICAL_MARGIN
+					ambience_position.x = rng.randf_range(0.0, viewport_size.x)
+			4:
+				ambience_position.x += sin(run_time * 0.7 + phase) * speed * delta * 0.5
+				ambience_position.y += cos(run_time * 0.9 + phase) * speed * delta * 0.5
+				if ambience_position.x < -10.0:
+					ambience_position.x = viewport_size.x + 10.0
+				elif ambience_position.x > viewport_size.x + 10.0:
+					ambience_position.x = -10.0
+				if ambience_position.y < -10.0:
+					ambience_position.y = viewport_size.y + 10.0
+				elif ambience_position.y > viewport_size.y + 10.0:
+					ambience_position.y = -10.0
+				var twinkle: float = 0.5 + 0.5 * sin(run_time * 2.0 + phase)
+				node.modulate.a = twinkle
+			5:
+				ambience_position.x += speed * delta
+				ambience_position.y += sin(run_time * 1.3 + phase) * 8.0 * delta
+				if ambience_position.x > viewport_size.x + TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN:
+					ambience_position.x = -TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN
+					ambience_position.y = rng.randf_range(0.0, viewport_size.y)
+			6:
+				var pulse: float = 0.4 + 0.6 * abs(sin(run_time * 2.5 + phase))
+				node.modulate.a = pulse
+				ambience_position.x += sin(run_time * 0.6 + phase) * 6.0 * delta
+				ambience_position.y += cos(run_time * 0.8 + phase) * 6.0 * delta
+				if ambience_position.x < -10.0 or ambience_position.x > viewport_size.x + 10.0:
+					ambience_position.x = rng.randf_range(0.0, viewport_size.x)
+				if ambience_position.y < -10.0 or ambience_position.y > viewport_size.y + 10.0:
+					ambience_position.y = rng.randf_range(0.0, viewport_size.y)
+			7:
+				ambience_position.y -= speed * delta
+				ambience_position.x += sin(run_time * 1.0 + phase) * 12.0 * delta
+				if ambience_position.y < -TUNING.BIOME_PARTICLE_VERTICAL_MARGIN:
+					ambience_position.y = viewport_size.y + TUNING.BIOME_PARTICLE_VERTICAL_MARGIN
+					ambience_position.x = rng.randf_range(0.0, viewport_size.x)
 		node.position = ambience_position
+
+
+func create_background() -> void:
+	background_layer = CanvasLayer.new()
+	background_layer.name = "BackgroundLayer"
+	background_layer.layer = -2
+	add_child(background_layer)
+
+	var viewport_size := get_viewport_rect().size
+	background_rect = ColorRect.new()
+	background_rect.name = "BackgroundRect"
+	background_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	background_rect.color = BIOME_BACKGROUNDS[0]
+	background_layer.add_child(background_rect)
+
+	# Standard biome: sky + mountain + trees backdrop.
+	standard_deco = Node2D.new()
+	standard_deco.name = "StandardDeco"
+	background_layer.add_child(standard_deco)
+
+	# Foggy, hazy backdrop.
+	for layer_index in 4:
+		var fog := ColorRect.new()
+		fog.position = Vector2.ZERO
+		fog.size = viewport_size
+		var t := float(layer_index) / 3.0
+		fog.color = Color(
+			lerpf(0.42, 0.58, t),
+			lerpf(0.48, 0.62, t),
+			lerpf(0.62, 0.78, t),
+			0.14 + t * 0.1
+		)
+		standard_deco.add_child(fog)
+
+	# Soft sun glow.
+	var sun := Polygon2D.new()
+	var sun_radius := minf(viewport_size.x, viewport_size.y) * 0.18
+	var pts := PackedVector2Array()
+	for i in 24:
+		var a := TAU * float(i) / 24.0
+		pts.append(Vector2(cos(a), sin(a)) * sun_radius)
+	sun.polygon = pts
+	sun.position = Vector2(viewport_size.x * 0.72, viewport_size.y * 0.22)
+	sun.color = Color(0.95, 0.85, 0.55, 0.12)
+	standard_deco.add_child(sun)
+
+	standard_deco.visible = (current_biome == 0)
+
+
+	# Subtle horizon gradient overlay for depth.
+	var horizon := ColorRect.new()
+	horizon.name = "HorizonGlow"
+	horizon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	horizon.color = Color(1.0, 1.0, 1.0, 0.04)
+	background_layer.add_child(horizon)
 
 
 func create_biome_ui() -> void:
@@ -542,10 +747,11 @@ func create_dev_tools() -> void:
 	dev_tools.connect("combo_requested", dev_add_combo)
 	dev_tools.connect("stored_bonus_requested", dev_grant_stored_bonus)
 	dev_tools.connect("end_run_requested", dev_end_run)
+	dev_tools.connect("acid_pause_requested", dev_toggle_acid_pause)
 
 
 func dev_spawn_platform(platform_type: int) -> void:
-	if game_over or platform_type < PlatformType.STANDARD or platform_type > PlatformType.STICKY_DOUGH:
+	if game_over or platform_type < PlatformType.STANDARD or platform_type > PlatformType.FRAGILE:
 		return
 	var platform := PLATFORM_SCENES[platform_type].instantiate() as Node2D
 	platform.set("platform_type", platform_type)
@@ -554,7 +760,8 @@ func dev_spawn_platform(platform_type: int) -> void:
 	if platform_type == PlatformType.SLINGSHOT_RAMP:
 		var ramp_on_left := spawn_x <= WORLD_CENTER_X
 		spawn_x = PLATFORM_X_MIN if ramp_on_left else PLATFORM_X_MAX
-		platform.set("slingshot_rotation_degrees", -TUNING.PLATFORM_RAMP_DEFAULT_ANGLE if ramp_on_left else TUNING.PLATFORM_RAMP_DEFAULT_ANGLE)
+		platform.set("slingshot_rotation_degrees", -TUNING.PLATFORM_RAMP_DEFAULT_ANGLE)
+		platform.set("slingshot_mirror", not ramp_on_left)
 	platform.position = Vector2(spawn_x, player.global_position.y - TUNING.DEV_TEST_PLATFORM_VERTICAL_OFFSET)
 	add_child(platform)
 
@@ -604,6 +811,11 @@ func dev_grant_stored_bonus() -> void:
 	player.stored_jump_bonus_time_remaining = player.get_stored_jump_bonus_timeout()
 
 
+
+func dev_toggle_acid_pause() -> void:
+	acid_paused = not acid_paused
+
+
 func dev_end_run() -> void:
 	if game_over:
 		return
@@ -637,19 +849,80 @@ func create_acid_floor() -> void:
 	acid_visuals.z_index = -1
 	acid_floor.add_child(acid_visuals)
 
-	var acid_visual := Polygon2D.new()
-	acid_visual.polygon = PackedVector2Array([
-		Vector2(-(WORLD_WIDTH + 24.0) / 2.0, -12.0),
-		Vector2((WORLD_WIDTH + 24.0) / 2.0, -12.0),
-		Vector2((WORLD_WIDTH + 24.0) / 2.0, 12.0),
-		Vector2(-(WORLD_WIDTH + 24.0) / 2.0, 12.0),
+	acid_body = Polygon2D.new()
+	acid_body.polygon = PackedVector2Array([
+		Vector2(-(WORLD_WIDTH + 24.0) / 2.0, -4.0),
+		Vector2((WORLD_WIDTH + 24.0) / 2.0, -4.0),
+		Vector2((WORLD_WIDTH + 24.0) / 2.0, 2000.0),
+		Vector2(-(WORLD_WIDTH + 24.0) / 2.0, 2000.0),
 	])
-	acid_visual.color = Color(0.55, 0.88, 0.2, 0.9)
-	acid_visuals.add_child(acid_visual)
+	acid_body.color = Color(0.12, 0.42, 0.12, 0.95)
+	acid_visuals.add_child(acid_body)
 
+	acid_mid = Polygon2D.new()
+	acid_mid.color = Color(0.2, 0.62, 0.16, 0.9)
+	acid_visuals.add_child(acid_mid)
+
+	acid_surface = Polygon2D.new()
+	acid_surface.color = Color(0.32, 0.85, 0.22, 0.95)
+	rebuild_acid_surface(0.0)
+	acid_visuals.add_child(acid_surface)
+
+	# Bubbles for flowing-water texture.
+	var bubbles := CPUParticles2D.new()
+	bubbles.name = "AcidBubbles"
+	bubbles.amount = 36
+	bubbles.lifetime = 2.2
+	bubbles.speed_scale = 1.0
+	bubbles.explosiveness = 0.0
+	bubbles.randomness = 1.0
+	bubbles.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	bubbles.emission_rect_extents = Vector2((WORLD_WIDTH + 24.0) / 2.0, 2.0)
+	bubbles.direction = Vector2(0.0, -1.0)
+	bubbles.spread = 18.0
+	bubbles.initial_velocity_min = 6.0
+	bubbles.initial_velocity_max = 22.0
+	bubbles.gravity = Vector2(0.0, -4.0)
+	bubbles.scale_amount_min = 0.6
+	bubbles.scale_amount_max = 1.8
+	bubbles.color = Color(0.75, 1.0, 0.45, 0.55)
+	bubbles.position = Vector2(0.0, -14.0)
+	acid_visuals.add_child(bubbles)
+
+
+func rebuild_acid_surface(time: float) -> void:
+	var half := (WORLD_WIDTH + 24.0) / 2.0
+	var segments := 20
+	var top_points := PackedVector2Array()
+	var bottom_y := -4.0
+	for i in range(segments + 1):
+		var x := -half + (half * 2.0) * float(i) / float(segments)
+		var wave := sin(time * 2.3 + float(i) * 0.7) * 3.0 + sin(time * 1.1 + float(i) * 1.3) * 1.5
+		top_points.append(Vector2(x, -12.0 + wave))
+	var poly := PackedVector2Array()
+	for p in top_points:
+		poly.append(p)
+	for i in range(segments, -1, -1):
+		var x := -half + (half * 2.0) * float(i) / float(segments)
+		poly.append(Vector2(x, bottom_y))
+	acid_surface.polygon = poly
+
+	# Mid layer: slower, deeper wave for texture.
+	var mid_top := PackedVector2Array()
+	for i in range(segments + 1):
+		var x := -half + (half * 2.0) * float(i) / float(segments)
+		var wave := sin(time * 1.4 + float(i) * 0.9 + 1.7) * 2.0 + sin(time * 0.7 + float(i) * 1.6) * 1.0
+		mid_top.append(Vector2(x, -8.0 + wave))
+	var mid_poly := PackedVector2Array()
+	for p in mid_top:
+		mid_poly.append(p)
+	for i in range(segments, -1, -1):
+		var x := -half + (half * 2.0) * float(i) / float(segments)
+		mid_poly.append(Vector2(x, bottom_y + 6.0))
+	acid_mid.polygon = mid_poly
 
 func create_game_over_overlay() -> void:
-	var elements := create_dialog("ASCENT ENDED", "The acid caught up.")
+	var elements := create_dialog("GAME OVER", "The acid caught up.")
 	game_over_overlay = elements["layer"]
 	game_over_details = elements["details"]
 	var content: VBoxContainer = elements["content"]
@@ -699,7 +972,7 @@ func create_dialog(title_text: String, detail_text: String) -> Dictionary:
 	add_child(layer)
 
 	var dimmer := ColorRect.new()
-	dimmer.color = Color(0.015, 0.04, 0.05, 0.78)
+	dimmer.color = Color(0.06, 0.04, 0.10, 0.78)
 	dimmer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dimmer.mouse_filter = Control.MOUSE_FILTER_STOP
 	layer.add_child(dimmer)
@@ -711,8 +984,8 @@ func create_dialog(title_text: String, detail_text: String) -> Dictionary:
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(360, 0)
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.035, 0.12, 0.14, 1.0)
-	panel_style.border_color = Color(0.38, 0.82, 0.68)
+	panel_style.bg_color = Color(0.08, 0.05, 0.12, 1.0)
+	panel_style.border_color = Color(0.85, 0.8, 0.95)
 	panel_style.set_border_width_all(2)
 	panel_style.set_corner_radius_all(8)
 	panel_style.content_margin_left = 28
@@ -730,7 +1003,7 @@ func create_dialog(title_text: String, detail_text: String) -> Dictionary:
 	title.text = title_text
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 32)
-	title.add_theme_color_override("font_color", Color(0.46, 0.92, 0.75))
+	title.add_theme_color_override("font_color", Color(0.9, 0.85, 1.0))
 	buttons.add_child(title)
 
 	var details := Label.new()
@@ -747,17 +1020,16 @@ func create_dialog(title_text: String, detail_text: String) -> Dictionary:
 
 func add_dialog_button(container: VBoxContainer, text: String, action: Callable, primary := false) -> Button:
 	var button := Button.new()
-	button.text = text
 	button.custom_minimum_size = Vector2(0, 42)
+	button.text = text
 	if primary:
-		button.add_theme_stylebox_override("normal", dialog_button_style(Color(0.46, 0.92, 0.75)))
-		button.add_theme_color_override("font_color", Color(0.04, 0.12, 0.13))
+		button.add_theme_stylebox_override("normal", dialog_button_style(Color(0.9, 0.85, 1.0)))
+		button.add_theme_color_override("font_color", Color(0.08, 0.05, 0.12))
 	else:
-		button.add_theme_stylebox_override("normal", dialog_button_style(Color(0.12, 0.28, 0.29)))
+		button.add_theme_stylebox_override("normal", dialog_button_style(Color(0.18, 0.12, 0.25)))
 	button.pressed.connect(action)
 	container.add_child(button)
 	return button
-
 
 func dialog_button_style(color: Color) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()

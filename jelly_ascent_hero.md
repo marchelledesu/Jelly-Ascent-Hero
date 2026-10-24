@@ -37,7 +37,6 @@
 | - Super-Trampoline (Green) -> Maximum upward momentum & combo boost   |
 | - Slingshot Ramp (Blue)    -> High-speed diagonal launch w/ angle     |
 | - Fragile Tile (Red)       -> Quick escape jump before tile collapses |
-| - Sticky Dough (Yellow)    -> Emergency brake & momentum absorption   |
 | - Standard Tile (Gray)     -> Base elastic platform rebound           |
 +-----------------------------------------------------------------------+
                                    |
@@ -96,9 +95,10 @@
 | :--- | :--- | :--- |
 | **Super-Trampoline** | Green | High elasticity, low stiffness. Flings player skyward and increments combo multiplier. |
 | **Slingshot Ramp** | Blue | Angled surface spawns at either side of the tower and faces inward for a high-speed diagonal launch. |
-| **Fragile Tile** | Red | One-use platform. Remains available while the player stands on it, then disables collision and collapses shortly after the player jumps away. |
-| **Sticky Dough** | Yellow | Reusable, non-collapsing platform. High physical damping absorbs most horizontal momentum and resets combos. Its jump uses the standard platform's normal jump speed, but horizontal acceleration is reduced while standing on it. A standard platform is generated next at regular vertical spacing and within reachable horizontal range to keep the route progressing. |
+| **Fragile Tile** | Red | Rigid red platform (no softbody). Disappears after the player stands on it for 0.5 seconds. |
 | **Standard Rigid** | Gray | Basic platform with default elastic rebound properties. |
+
+Standard and fragile platforms use repeating 32 px atlas tiles; their collision widths are snapped to the same grid so the artwork and platform edges stay aligned.
 
 ---
 
@@ -135,6 +135,8 @@
    * **Crushing Abyss:** Higher frequency of *Super-Trampolines* to offset heavy gravity pull.
    * **Higher Altitudes:** Special platforms appear more often, standard-only streaks shorten, and up to 25% of special-platform selections are additionally weighted toward *Super-Trampolines* or *Slingshot Ramps*.
 
+   Slingshot ramps sit at the left or right world edge; their tilt and launch vector point inward toward the tower center.
+
 ---
 
 ### 2.6 Biomes & Environmental Modifiers
@@ -147,6 +149,8 @@ The tower shifts environmental biomes every 500 meters of elevation. A full-widt
 | **Gale-Force Winds** | 501m – 1000m | Strong shifting wind gusts | Mid-air crosswinds can reach 880 px/s² acceleration. Animated wind streaks and a storm-blue tint reinforce the lateral pushes. |
 | **Frosted Peaks** | 1001m – 1500m | Low grip (`0.08x` drag, `0.55x` steering) | Momentum persists and steering/braking respond more slowly, with platform gaps increased by 10–15 px. Falling snow and an icy tint mark the zone. |
 | **Crushing Abyss** | 1501m+ | Heavy Gravity (`2.0x`) | Stronger downward pull, while preserving enough airtime to steer and wall-bounce; gaps increased by 18–24 px keep traversal demanding. Dark violet shading and rising motes signal the danger. |
+
+The side walls use a 64 × 128 pixel seamless tile atlas, twice as wide as a standard wall column. Each biome has four repeating variants mixed from the standard, red, blue-ramp, and Super-Trampoline platform art: stone for the Standard Tower, blue inlays for Gale-Force Winds, icy stone and blue accents for Frosted Peaks, and red stone with violet trampoline detailing for the Crushing Abyss. The left wall is mirrored to face the tower interior; both wall visuals follow the player while the existing wall collision remains unchanged.
 
 ---
 

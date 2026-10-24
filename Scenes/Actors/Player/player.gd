@@ -49,13 +49,48 @@ var stored_jump_bonus_time_remaining := 0.0
 var supporting_platform: Node
 var last_landed_platform: Node
 var platforms_passed_this_airtime: Dictionary = {}
+var _sprite_base_position := Vector2.ZERO
+var _sprite_base_scale := Vector2.ONE
+var _idle_time := 0.0
+var _was_airborne := false
+var _landing_squish := 0.0
+var _facing := -1.0
+var _roll_timer := 0.0
+var _roll_duration := 0.45
+var _roll_direction := 1.0
 
 @onready var camera: Camera2D = $Camera2D
+@onready var character_sprite: Sprite2D = $SpriteSlots/CharacterSprite
 
 
 func _ready() -> void:
+	_sprite_base_position = character_sprite.position
+	_sprite_base_scale = character_sprite.scale
 	update_camera_tracking()
 
+
+func _process(delta: float) -> void:
+	_idle_time += delta
+	_landing_squish = lerpf(_landing_squish, 0.0, clampf(delta * 8.0, 0.0, 1.0))
+	if _roll_timer > 0.0:
+		_roll_timer = max(0.0, _roll_timer - delta)
+	var input_dir := get_horizontal_direction()
+	if input_dir != 0.0:
+		_facing = -input_dir
+	var idle_bob := 0.0
+	var breathe := 1.0 + sin(_idle_time * 2.1) * 0.01
+	var lean := clampf(velocity.x / MAX_HORIZONTAL_SPEED, -1.0, 1.0) * 0.06
+	var grounded := 1.0 if is_on_floor() else 0.0
+	var ground_squish := 0.97 if grounded else 1.0
+	var squish_y := (1.0 - _landing_squish) * ground_squish
+	var squish_x := (1.0 + _landing_squish * 0.5) / ground_squish
+	character_sprite.position = _sprite_base_position + Vector2(0.0, idle_bob)
+	character_sprite.scale = _sprite_base_scale * Vector2(_facing * breathe * squish_x, breathe * squish_y)
+	var roll_angle := 0.0
+	if _roll_timer > 0.0:
+		var roll_progress := 1.0 - (_roll_timer / _roll_duration)
+		roll_angle = _roll_direction * roll_progress * TAU
+	character_sprite.rotation = lean + roll_angle
 
 func _physics_process(delta: float) -> void:
 	var fast_drop := Input.is_action_pressed("ui_down") or Input.is_key_pressed(KEY_S)
@@ -75,6 +110,11 @@ func _physics_process(delta: float) -> void:
 	resolve_platform_landing(incoming_velocity)
 	handle_wall_bounce(incoming_velocity)
 	wall_bounce_cooldown = max(0.0, wall_bounce_cooldown - delta)
+	if not is_on_floor():
+		_was_airborne = true
+	elif _was_airborne:
+		_was_airborne = false
+		_landing_squish = 0.25
 	update_camera_tracking()
 
 
@@ -183,6 +223,8 @@ func handle_wall_bounce(incoming_velocity: Vector2) -> void:
 				award_perfect_wall_bounce()
 			wall_bounce_cooldown = WALL_BOUNCE_MOMENTUM_GRACE
 			increment_combo()
+			_roll_timer = _roll_duration
+			_roll_direction = wall_bounce_direction
 			break
 
 

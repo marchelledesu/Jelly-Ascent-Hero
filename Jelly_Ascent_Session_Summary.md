@@ -25,13 +25,12 @@ The starter project was expanded into a playable prototype with movement, platfo
 ## Platform System
 
 - Integrated the installed appsinacup SoftBody2D addon.
-- SoftBody2D is used for Super-Trampoline, Slingshot Ramp, and Sticky Dough. Standard and Fragile platforms use a frozen `RigidBody2D`.
-- Standard platform widths remain randomized from **150 to 270 px**; collision and visual dimensions are generated from the same sampled width.
+- SoftBody2D is used for Super-Trampoline and Slingshot Ramp. Standard and Fragile platforms use a frozen `RigidBody2D`.
+- Standard platform widths are randomized in **32 px increments** across the configured range; collision widths match their repeated atlas tiles.
 - Platform thickness was reduced to **12 px** for the rigid platform and softbody texture without changing horizontal lengths.
 - Platforms allow upward pass-through until approximately **90% of the player’s body** has cleared the platform surface; collision is then restored.
-- Standard, Fragile, and Sticky Dough catch the player and require manual jump input. Powered trampoline and slingshot types launch automatically.
-- Sticky Dough has a lower manual jump strength. Procedural Sticky Dough placements are given a nearby follow-up platform.
-- Platform art is grouped separately from its collision body to simplify replacing placeholder visuals later.
+- Standard and Fragile platforms catch the player and require manual jump input. Powered trampoline and slingshot types launch automatically.
+- Standard and Fragile platform visuals use repeating 32 px atlas tiles, with collision widths snapped to the same grid.
 
 ## Procedural Tower and Hazards
 
@@ -58,7 +57,8 @@ Biome transitions also update platform-generation weighting, apply a visual tint
 - The world and viewport are **700 px wide**.
 - The camera is fixed horizontally at the world center and follows the player vertically only.
 - Jump-reactive zoom and camera smoothing were removed to eliminate camera jitter.
-- Placeholder wall, platform, and acid visuals are grouped separately from collision/logic nodes where implemented, making later asset replacement easier.
+- Side-wall visuals use 64 × 128 seamless tiles, mixed from the platform assets with four variants for each biome; wall collision is unchanged.
+- Slingshot ramps spawn at the left or right world edge and launch inward according to their facing.
 
 ## Menus, HUD, and Progression
 
@@ -67,6 +67,7 @@ Biome transitions also update platform-generation weighting, apply a visual tint
 - Added pause/resume, retry, and return-to-menu actions.
 - Added game-over scoring and a local top-10 leaderboard stored at `user://leaderboard.save`.
 - Score is calculated from altitude and combo.
+- A project-wide pixel font and dark text outline now cover labels, buttons, HUD readouts, and text entry.
 
 ## Verification
 
@@ -77,10 +78,10 @@ Biome transitions also update platform-generation weighting, apply a visual tint
 
 ## Remaining Work
 
-- Tune movement, sticky recovery, wall-to-wall ricochet, and powered-platform spacing through real playtests.
+- Tune movement, wall-to-wall ricochet, and powered-platform spacing through real playtests.
 - Exercise each biome transition and full-width biome platform at its altitude threshold.
 - Test pause, retry, game-over, and leaderboard saving end to end.
-- Replace placeholder art with the user’s final player, platform, wall, acid, and biome assets.
+- Replace remaining placeholder acid art and add audio, transition polish, and the remaining Phase 6 presentation/balance work from the GDD.
 - Add audio, transition polish, and the remaining Phase 6 presentation/balance work from the GDD.
 
 ## Key Files

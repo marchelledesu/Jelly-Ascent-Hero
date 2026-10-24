@@ -1,20 +1,20 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://lgyb5ncjqpv1"]
 
-[ext_resource type="Script" path="res://Scenes/Platforms/Base/platform.gd" id="1_script"]
-[ext_resource type="Script" path="res://Scenes/Platforms/Base/platform_softbody.gd" id="2_softbody"]
-[ext_resource type="Texture2D" path="res://Assets/jelly_platform.svg" id="3_texture"]
+[ext_resource type="Script" uid="uid://bd0cs7m58iqtx" path="res://Scenes/Platforms/Base/platform.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://c1etis5x863h1" path="res://Scenes/Platforms/Base/platform_softbody.gd" id="2_softbody"]
+[ext_resource type="Texture2D" uid="uid://ds8tx040ta31k" path="res://Assets/jelly_platform.svg" id="3_texture"]
+[ext_resource type="Script" path="res://Scenes/Platforms/Base/platform_tilemap.gd" id="4_tilemap"]
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_platform"]
-friction = 1.0
 bounce = 0.05
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_rigid_platform"]
 size = Vector2(120, 12)
 
-[node name="Platform" type="Node2D"]
+[node name="Platform" type="Node2D" unique_id=835505619]
 script = ExtResource("1_script")
 
-[node name="SoftBody" type="Polygon2D" parent="."]
+[node name="SoftBody" type="Polygon2D" parent="." unique_id=438608935]
 texture = ExtResource("3_texture")
 skeleton = NodePath("Skeleton2D")
 script = ExtResource("2_softbody")
@@ -22,30 +22,34 @@ vertex_interval = 16
 joint_type = "spring"
 stiffness = 24.0
 damping = 4.0
+radius = 15
+margin_offset_edge = 3.0
 mass = 0.15
-gravity_scale = 0.0
 can_sleep = false
+gravity_scale = 0.0
 collision_mask = 3
 physics_material_override = SubResource("PhysicsMaterial_platform")
 
-[node name="RigidPlatform" type="RigidBody2D" parent="."]
-freeze = true
-freeze_mode = 1
+[node name="RigidPlatform" type="RigidBody2D" parent="." unique_id=987248584]
 collision_mask = 2
 physics_material_override = SubResource("PhysicsMaterial_platform")
+freeze = true
+freeze_mode = 1
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="RigidPlatform"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="RigidPlatform" unique_id=505642021]
 shape = SubResource("RectangleShape2D_rigid_platform")
 
-[node name="PlatformVisuals" type="Node2D" parent="."]
+[node name="PlatformVisuals" type="Node2D" parent="." unique_id=615766796]
 
-[node name="RigidPlatformVisual" type="Polygon2D" parent="PlatformVisuals"]
+[node name="RigidPlatformVisual" type="Polygon2D" parent="PlatformVisuals" unique_id=492652092]
 polygon = PackedVector2Array(-60, -6, 60, -6, 60, 6, -60, 6)
 
-[node name="SpriteSlots" type="Node2D" parent="."]
+[node name="SpriteSlots" type="Node2D" parent="." unique_id=1531715419]
 
-[node name="PlatformSprite" type="Sprite2D" parent="SpriteSlots"]
+[node name="PlatformSprite" type="TileMapLayer" parent="SpriteSlots" unique_id=1848393366]
+script = ExtResource("4_tilemap")
+texture_filter = 1
 
-[node name="CollapseTimer" type="Timer" parent="."]
+[node name="CollapseTimer" type="Timer" parent="." unique_id=162693512]
 wait_time = 0.2
 one_shot = true

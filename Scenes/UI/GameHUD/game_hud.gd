@@ -39,7 +39,7 @@ func create_timer_panel() -> void:
 
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color(0.025, 0.07, 0.075, 0.72)
-	panel_style.border_color = Color(0.48, 0.78, 0.68, 0.28)
+	panel_style.border_color = Color(0.85, 0.8, 0.95, 0.35)
 	panel_style.set_border_width_all(1)
 	panel_style.set_corner_radius_all(5)
 	panel_style.content_margin_left = 8.0
@@ -53,8 +53,8 @@ func create_timer_panel() -> void:
 	timer_rows.add_theme_constant_override("separation", 4)
 	timer_panel.add_child(timer_rows)
 
-	combo_timer_bar = create_timer_row(timer_rows, "Combo", Color(0.35, 0.82, 0.65))
-	bonus_timer_bar = create_timer_row(timer_rows, "Stored jump", Color(0.42, 0.68, 0.95))
+	combo_timer_bar = create_timer_row(timer_rows, "Combo", Color(0.85, 0.8, 0.95))
+	bonus_timer_bar = create_timer_row(timer_rows, "Stored jump", Color(0.95, 0.9, 1.0))
 
 
 func create_timer_row(container: VBoxContainer, label_text: String, bar_color: Color) -> ProgressBar:
@@ -73,7 +73,7 @@ func create_timer_row(container: VBoxContainer, label_text: String, bar_color: C
 	label.text = label_text
 	label.custom_minimum_size.x = 78.0
 	label.add_theme_font_size_override("font_size", 12)
-	label.add_theme_color_override("font_color", Color(0.8, 0.87, 0.85, 0.85))
+	label.add_theme_color_override("font_color", Color(0.9, 0.85, 0.95, 0.9))
 	row.add_child(label)
 
 	var bar := ProgressBar.new()
@@ -83,7 +83,7 @@ func create_timer_row(container: VBoxContainer, label_text: String, bar_color: C
 	bar.custom_minimum_size = Vector2(105.0, 10.0)
 	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var background := StyleBoxFlat.new()
-	background.bg_color = Color(0.15, 0.2, 0.2, 0.8)
+	background.bg_color = Color(0.18, 0.12, 0.25, 0.8)
 	background.set_corner_radius_all(3)
 	var fill := StyleBoxFlat.new()
 	fill.bg_color = bar_color

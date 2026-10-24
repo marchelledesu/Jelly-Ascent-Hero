@@ -24,12 +24,14 @@ const LANDING_COLLISION_MARGIN := TUNING.PLATFORM_LANDING_COLLISION_MARGIN
 @export_range(TUNING.PLATFORM_WIDE_WIDTH_MIN_EXPORT, TUNING.PLATFORM_WIDE_WIDTH_MAX_EXPORT, TUNING.PLATFORM_WIDE_WIDTH_EXPORT_STEP) var max_standard_width := TUNING.PLATFORM_DEFAULT_WIDTH_MAX
 @export_enum("None", "Left", "Right") var wall_attach_side := 0
 @export var world_width := TUNING.WORLD_WIDTH
+@export var slingshot_mirror := false
 
 @onready var softbody: SoftBody2D = $SoftBody
 @onready var rigid_platform: RigidBody2D = $RigidPlatform
 @onready var platform_visuals: Node2D = $PlatformVisuals
 @onready var rigid_visual: Polygon2D = $PlatformVisuals/RigidPlatformVisual
 @onready var rigid_collision_shape: CollisionShape2D = $RigidPlatform/CollisionShape2D
+@onready var platform_sprite: TileMapLayer = $SpriteSlots/PlatformSprite
 @onready var collapse_timer: Timer = $CollapseTimer
 
 var players_passing_through: Dictionary = {}
@@ -47,26 +49,40 @@ func _ready() -> void:
 	apply_physics_materials()
 	if not uses_softbody:
 		rigid_visual.color = get_platform_color()
+		var platform_width := 120.0
+		var atlas_path := "res://Assets/standard platform.png"
+		if platform_type == PlatformType.FRAGILE:
+			atlas_path = "res://Assets/red platform.png"
 		if platform_type == PlatformType.STANDARD:
-			var random_width := randf_range(minf(min_standard_width, max_standard_width), maxf(min_standard_width, max_standard_width))
+			platform_width = randf_range(minf(min_standard_width, max_standard_width), maxf(min_standard_width, max_standard_width))
 			if wall_attach_side == 1:
-				position.x = TUNING.PLATFORM_WORLD_EDGE_INSET + random_width / 2.0
+				position.x = TUNING.PLATFORM_WORLD_EDGE_INSET + platform_width / 2.0
 			elif wall_attach_side == 2:
-				position.x = world_width - TUNING.PLATFORM_WORLD_EDGE_INSET - random_width / 2.0
+				position.x = world_width - TUNING.PLATFORM_WORLD_EDGE_INSET - platform_width / 2.0
 			var wide_shape := rigid_collision_shape.shape.duplicate() as RectangleShape2D
-			wide_shape.size.x = random_width
+			wide_shape.size.x = platform_width
 			rigid_collision_shape.shape = wide_shape
 			rigid_visual.polygon = PackedVector2Array([
-				Vector2(-random_width / 2.0, -PLATFORM_HALF_HEIGHT),
-				Vector2(random_width / 2.0, -PLATFORM_HALF_HEIGHT),
-				Vector2(random_width / 2.0, PLATFORM_HALF_HEIGHT),
-				Vector2(-random_width / 2.0, PLATFORM_HALF_HEIGHT),
+				Vector2(-platform_width / 2.0, -PLATFORM_HALF_HEIGHT),
+				Vector2(platform_width / 2.0, -PLATFORM_HALF_HEIGHT),
+				Vector2(platform_width / 2.0, PLATFORM_HALF_HEIGHT),
+				Vector2(-platform_width / 2.0, PLATFORM_HALF_HEIGHT),
 			])
+		rigid_visual.visible = false
+		var tile_count := maxi(1, int(ceil(platform_width / 32.0)))
+		platform_sprite.atlas_texture = load(atlas_path)
+		platform_sprite.position = Vector2(-tile_count * 16.0, -16.0)
+		platform_sprite.build_tiles(tile_count)
+		if platform_type == PlatformType.FRAGILE:
+			collapse_timer.wait_time = TUNING.PLATFORM_FRAGILE_COLLAPSE_DELAY
+			collapse_timer.timeout.connect(_on_collapse_timeout)
 		return
 
 	softbody.color = get_platform_color()
 	if platform_type == PlatformType.SLINGSHOT_RAMP:
 		rotation = deg_to_rad(slingshot_rotation_degrees)
+		if slingshot_mirror:
+			softbody.scale.x = -1.0
 	softbody.vertex_interval = TUNING.PLATFORM_SOFTBODY_VERTEX_INTERVAL
 	softbody.mass = TUNING.PLATFORM_SOFTBODY_MASS
 	configure_softbody()
@@ -78,6 +94,15 @@ func _ready() -> void:
 	anchor_softbody_ends()
 	collapse_timer.timeout.connect(_on_collapse_timeout)
 
+
+func _process(_delta: float) -> void:
+	if platform_type != PlatformType.FRAGILE or fragile_used:
+		return
+	if collapse_timer.is_stopped():
+		return
+	var player := get_tree().current_scene.get_node_or_null("Player") if get_tree() != null and get_tree().current_scene != null else null
+	if player == null or player.supporting_platform != self:
+		collapse_timer.stop()
 
 func resolve_landing(player: CharacterBody2D, impact_velocity: Vector2, surface_normal: Vector2) -> void:
 	if impact_velocity.y <= 0.0:
@@ -114,7 +139,9 @@ func resolve_landing(player: CharacterBody2D, impact_velocity: Vector2, surface_
 		PlatformType.FRAGILE:
 			settle_or_jump(player, get_manual_jump_speed(player))
 			if player.velocity.y < 0.0:
-				on_player_jumped_from()
+				collapse_timer.stop()
+			elif not fragile_used and collapse_timer.is_stopped():
+				collapse_timer.start()
 		PlatformType.STICKY_DOUGH:
 			player.velocity.x *= TUNING.PLATFORM_STICKY_LANDING_HORIZONTAL_RETAIN
 			settle_or_jump(player, get_manual_jump_speed(player))
@@ -125,11 +152,7 @@ func resolve_landing(player: CharacterBody2D, impact_velocity: Vector2, surface_
 func on_player_jumped_from() -> void:
 	if platform_type != PlatformType.FRAGILE or fragile_used:
 		return
-
-	fragile_used = true
-	collapse_timer.start(TUNING.PLATFORM_FRAGILE_COLLAPSE_DELAY)
-	rigid_visual.color = rigid_visual.color.darkened(0.35)
-	rigid_collision_shape.set_deferred("disabled", true)
+	collapse_timer.stop()
 
 
 func settle_or_jump(player: CharacterBody2D, jump_speed: float) -> void:
@@ -300,4 +323,5 @@ func anchor_body(rigid_body: PhysicsBody2D, anchor_name: String) -> void:
 
 func _on_collapse_timeout() -> void:
 	rigid_visual.color = rigid_visual.color.darkened(0.35)
+	platform_sprite.modulate = platform_sprite.modulate.darkened(0.35)
 	queue_free()

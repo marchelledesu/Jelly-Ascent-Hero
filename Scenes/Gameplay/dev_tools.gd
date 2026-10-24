@@ -7,6 +7,7 @@ signal launch_requested
 signal wall_bounce_requested
 signal combo_requested
 signal stored_bonus_requested
+signal acid_pause_requested
 signal end_run_requested
 
 var controller: Node
@@ -23,7 +24,7 @@ func setup(level_controller: Node) -> void:
 func build_ui() -> void:
 	command_input = LineEdit.new()
 	command_input.name = "DevCommandInput"
-	command_input.placeholder_text = "Type /dev and press Enter"
+	command_input.placeholder_text = "Enter command"
 	command_input.max_length = 16
 	command_input.visible = false
 	command_input.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
@@ -38,6 +39,7 @@ func build_ui() -> void:
 	command_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	command_hint.position = Vector2(-170.0, -90.0)
 	command_hint.size = Vector2(340.0, 24.0)
+	command_hint.visible = false
 	add_child(command_hint)
 
 	tools_panel = build_tools_panel()
@@ -49,14 +51,14 @@ func build_tools_panel() -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.name = "DeveloperTools"
 	panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	panel.offset_left = -332.0
+	panel.offset_left = -292.0
 	panel.offset_top = 18.0
 	panel.offset_right = -18.0
 	panel.offset_bottom = 0.0
-	panel.custom_minimum_size.x = 314.0
+	panel.custom_minimum_size.x = 274.0
 
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.025, 0.07, 0.075, 0.96)
+	panel_style.bg_color = Color(0.025, 0.07, 0.075, 0.82)
 	panel_style.border_color = Color(0.46, 0.92, 0.75, 0.85)
 	panel_style.set_border_width_all(2)
 	panel_style.set_corner_radius_all(6)
@@ -67,7 +69,7 @@ func build_tools_panel() -> PanelContainer:
 	panel.add_theme_stylebox_override("panel", panel_style)
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(290.0, 560.0)
+	scroll.custom_minimum_size = Vector2(250.0, 420.0)
 	panel.add_child(scroll)
 
 	var content := VBoxContainer.new()
@@ -93,7 +95,6 @@ func build_tools_panel() -> PanelContainer:
 	add_platform_button(platform_grid, "Super-Trampoline", 1)
 	add_platform_button(platform_grid, "Slingshot Ramp", 2)
 	add_platform_button(platform_grid, "Fragile", 3)
-	add_platform_button(platform_grid, "Sticky Dough", 4)
 
 	add_section_title(content, "BIOME CONDITIONS")
 	var biome_grid := GridContainer.new()
@@ -113,6 +114,7 @@ func build_tools_panel() -> PanelContainer:
 
 	add_section_title(content, "RUN FLOW")
 	add_tool_button(content, "End run (score/name/leaderboard)", func(): end_run_requested.emit())
+	add_tool_button(content, "Pause/Resume Acid", func(): acid_pause_requested.emit())
 	return panel
 
 
@@ -160,6 +162,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	command_input.text = "/"
 	command_input.visible = true
 	command_hint.text = "Type /dev and press Enter"
+	command_hint.visible = true
 	command_input.caret_column = command_input.text.length()
 	command_input.grab_focus()
 	get_viewport().set_input_as_handled()
@@ -168,10 +171,35 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func _on_command_submitted(command: String) -> void:
 	command_input.release_focus()
 	command_input.visible = false
-	if command.strip_edges().to_lower() == "/dev":
+	var cmd := command.strip_edges().to_lower()
+	if cmd == "/dev":
 		toggle_tools()
-	else:
-		command_hint.text = "Unknown command. Type /dev to open developer tools"
+		return
+	if cmd.begins_with("/p ") or cmd.begins_with("/platform "):
+		var parts := cmd.split(" ", false)
+		if parts.size() >= 2 and parts[1].is_valid_int():
+			var platform_type := int(parts[1])
+			if platform_type >= 0 and platform_type <= 3:
+				_emit_platform_requested(platform_type)
+				command_hint.text = "Spawned platform %d" % platform_type
+				return
+		command_hint.text = "Usage: /p 0-3"
+		return
+	if cmd == "/acid" or cmd == "/acid pause" or cmd == "/acid resume":
+		acid_pause_requested.emit()
+		command_hint.text = "Toggled acid pause"
+		return
+	if cmd.begins_with("/biome "):
+		var parts := cmd.split(" ", false)
+		if parts.size() >= 2 and parts[1].is_valid_int():
+			var biome_index := int(parts[1])
+			if biome_index >= 0 and biome_index <= 3:
+				_emit_biome_requested(biome_index)
+				command_hint.text = "Set biome %d" % biome_index
+				return
+		command_hint.text = "Usage: /biome 0-3"
+		return
+	command_hint.text = "Unknown command. Type /dev to open developer tools"
 
 
 func toggle_tools() -> void:

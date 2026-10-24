@@ -9,6 +9,12 @@ var tutorial_page: Control
 var leaderboard_page: Control
 var leaderboard_rows: VBoxContainer
 
+var bg_time := 0.0
+var acid_surface: Polygon2D
+var floating_platforms: Array[Dictionary] = []
+var jelly_sprite: TextureRect
+
+
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -16,22 +22,139 @@ func _ready() -> void:
 	build_main_page()
 	build_tutorial_page()
 	build_leaderboard_page()
-	show_page(main_page)
+	show_page(tutorial_page)
+
+
+
+
+func _process(delta: float) -> void:
+	bg_time += delta
+	var viewport_size := get_viewport_rect().size
+	if is_instance_valid(acid_surface):
+		rebuild_acid_wave(viewport_size)
+	for entry in floating_platforms:
+		var node := entry["node"] as TextureRect
+		var base_x: float = viewport_size.x * float(entry["x_frac"])
+		var base_y: float = viewport_size.y * float(entry["y_frac"])
+		node.position = Vector2(base_x, base_y + sin(bg_time * 0.9 + float(entry["phase"])) * 6.0)
+	if is_instance_valid(jelly_sprite):
+		jelly_sprite.position = Vector2(viewport_size.x * 0.4, viewport_size.y * 0.46 + sin(bg_time * 1.6) * 4.0)
 
 
 func build_background() -> void:
 	var background := ColorRect.new()
-	background.color = Color(0.035, 0.12, 0.14)
+	background.color = Color(0.08, 0.10, 0.20)
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
 
-	var horizon := Polygon2D.new()
-	horizon.polygon = PackedVector2Array([
-		Vector2(0, 510), Vector2(1152, 410), Vector2(1152, 648), Vector2(0, 648),
-	])
-	horizon.color = Color(0.07, 0.2, 0.2)
-	add_child(horizon)
+	# Soft fog layers for depth (biome 0 sky).
+	for layer_index in 4:
+		var fog := ColorRect.new()
+		fog.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		fog.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var t := float(layer_index) / 3.0
+		fog.color = Color(
+			lerpf(0.30, 0.50, t),
+			lerpf(0.36, 0.52, t),
+			lerpf(0.55, 0.72, t),
+			0.10 + t * 0.08
+		)
+		add_child(fog)
+
+	# Rising acid pool at the bottom.
+	acid_surface = Polygon2D.new()
+	add_child(acid_surface)
+	rebuild_acid_wave(get_viewport_rect().size)
+
+	# Floating platforms echoing the climb.
+	var platform_texture := preload("res://Assets/standard platform.png")
+	var scales := [0.7, 0.55, 0.8, 0.6, 0.75]
+	var fracs := [
+		Vector2(0.13, 0.40), Vector2(0.74, 0.31), Vector2(0.43, 0.52),
+		Vector2(0.20, 0.65), Vector2(0.67, 0.59)
+	]
+	for i in fracs.size():
+		var platform := TextureRect.new()
+		platform.texture = platform_texture
+		platform.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		platform.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		platform.custom_minimum_size = Vector2(128, 32) * float(scales[i])
+		platform.size = Vector2(128, 32) * float(scales[i])
+		platform.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		platform.modulate = Color(1, 1, 1, 0.85)
+		add_child(platform)
+		floating_platforms.append({
+			"node": platform,
+			"x_frac": fracs[i].x,
+			"y_frac": fracs[i].y,
+			"phase": float(i) * 1.3
+		})
+
+	# Jelly hero resting on a ledge.
+	var player_texture := preload("res://Assets/playerJAH.png")
+	jelly_sprite = TextureRect.new()
+	jelly_sprite.texture = player_texture
+	jelly_sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	jelly_sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	jelly_sprite.size = Vector2(64, 64)
+	jelly_sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(jelly_sprite)
+
+	# Ambient particles for life.
+	var viewport_size := get_viewport_rect().size
+	var center := viewport_size * 0.5
+
+	var bubbles := CPUParticles2D.new()
+	bubbles.amount = 36
+	bubbles.lifetime = 2.6
+	bubbles.preprocess = 1.0
+	bubbles.speed_scale = 1.0
+	bubbles.explosiveness = 0.0
+	bubbles.randomness = 0.6
+	bubbles.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	bubbles.emission_rect_extents = Vector2(viewport_size.x * 0.5, 12)
+	bubbles.position = Vector2(center.x, viewport_size.y - 60)
+	bubbles.direction = Vector2(0, -1)
+	bubbles.spread = 18.0
+	bubbles.initial_velocity_min = 20.0
+	bubbles.initial_velocity_max = 55.0
+	bubbles.gravity = Vector2(0, -8)
+	bubbles.scale_amount_min = 1.0
+	bubbles.scale_amount_max = 3.0
+	bubbles.color = Color(0.55, 0.95, 0.45, 0.7)
+	add_child(bubbles)
+
+	var motes := CPUParticles2D.new()
+	motes.amount = 28
+	motes.lifetime = 4.0
+	motes.preprocess = 2.0
+	motes.speed_scale = 0.8
+	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	motes.emission_rect_extents = Vector2(viewport_size.x * 0.5, viewport_size.y * 0.5)
+	motes.position = center
+	motes.direction = Vector2(0, 0)
+	motes.spread = 180.0
+	motes.initial_velocity_min = 2.0
+	motes.initial_velocity_max = 12.0
+	motes.gravity = Vector2(0, -4)
+	motes.scale_amount_min = 0.8
+	motes.scale_amount_max = 2.0
+	motes.color = Color(0.75, 0.95, 0.85, 0.5)
+	add_child(motes)
+
+
+func rebuild_acid_wave(viewport_size: Vector2) -> void:
+	var base_y := viewport_size.y - 90.0
+	var points := PackedVector2Array()
+	points.append(Vector2(0, viewport_size.y))
+	for i in 25:
+		var x := viewport_size.x * float(i) / 24.0
+		var wave := sin(bg_time * 2.2 + float(i) * 0.6) * 8.0
+		points.append(Vector2(x, base_y + wave))
+	points.append(Vector2(viewport_size.x, viewport_size.y))
+	acid_surface.polygon = points
+	acid_surface.color = Color(0.22, 0.72, 0.20, 0.9)
 
 
 func build_main_page() -> void:
