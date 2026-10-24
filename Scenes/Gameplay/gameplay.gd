@@ -125,6 +125,7 @@ func _ready() -> void:
 	create_pause_overlay()
 	create_biome_ui()
 	create_dev_tools()
+	create_mobile_controls()
 	update_wall_positions()
 	update_biome()
 	spawn_chunks_ahead()
@@ -1216,3 +1217,74 @@ func end_run() -> void:
 		final_run_combo,
 	]
 	game_over_overlay.visible = true
+func create_mobile_controls() -> void:
+	var viewport_size := get_viewport_rect().size
+	var layer := CanvasLayer.new()
+	layer.layer = 30
+	add_child(layer)
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(root)
+
+	var alpha := 0.35
+	var make_button := func(text: String, pos: Vector2, size: Vector2, on_down: Callable, on_up: Callable) -> Button:
+		var btn := Button.new()
+		btn.text = text
+		btn.position = pos
+		btn.size = size
+		btn.modulate.a = alpha
+		btn.button_down.connect(on_down)
+		btn.button_up.connect(on_up)
+		root.add_child(btn)
+		return btn
+
+	var btn_size := Vector2(96, 96)
+	var bottom := viewport_size.y - btn_size.y - 24.0
+	make_button.call("<", Vector2(24.0, bottom), btn_size,
+		Callable(self, "_mobile_press_left"), Callable(self, "_mobile_release_left"))
+	make_button.call(">", Vector2(132.0, bottom), btn_size,
+		Callable(self, "_mobile_press_right"), Callable(self, "_mobile_release_right"))
+	make_button.call("JUMP", Vector2(viewport_size.x - 120.0, bottom), btn_size,
+		Callable(self, "_mobile_press_jump"), Callable(self, "_mobile_release_jump"))
+	make_button.call("DROP", Vector2(viewport_size.x - 228.0, bottom), btn_size,
+		Callable(self, "_mobile_press_drop"), Callable(self, "_mobile_release_drop"))
+
+	var pause_btn := Button.new()
+	pause_btn.text = "||"
+	pause_btn.position = Vector2(viewport_size.x - 72.0, 24.0)
+	pause_btn.size = Vector2(48.0, 48.0)
+	pause_btn.modulate.a = alpha
+	pause_btn.pressed.connect(toggle_pause)
+	root.add_child(pause_btn)
+
+
+func _mobile_press_left() -> void:
+	_mobile_send_action("ui_left", true)
+
+func _mobile_release_left() -> void:
+	_mobile_send_action("ui_left", false)
+
+func _mobile_press_right() -> void:
+	_mobile_send_action("ui_right", true)
+
+func _mobile_release_right() -> void:
+	_mobile_send_action("ui_right", false)
+
+func _mobile_press_jump() -> void:
+	_mobile_send_action("ui_accept", true)
+
+func _mobile_release_jump() -> void:
+	_mobile_send_action("ui_accept", false)
+
+func _mobile_press_drop() -> void:
+	_mobile_send_action("ui_down", true)
+
+func _mobile_release_drop() -> void:
+	_mobile_send_action("ui_down", false)
+
+func _mobile_send_action(action: String, pressed: bool) -> void:
+	var ev := InputEventAction.new()
+	ev.action = action
+	ev.pressed = pressed
+	Input.parse_input_event(ev)
