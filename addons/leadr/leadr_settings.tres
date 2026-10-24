@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="LeadrSettings" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/leadr/core/leadr_settings.gd" id="1_leadr_settings"]
+
+[resource]
+script = ExtResource("1_leadr_settings")
+game_id = ""
+base_url = "https://api.leadrcloud.com"
+debug_logging = false
+test_mode = false

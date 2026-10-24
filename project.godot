@@ -23,7 +23,7 @@ window/stretch/aspect="expand"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/softbody2d/plugin.cfg")
+enabled=PackedStringArray("res://addons/softbody2d/plugin.cfg", "res://addons/leadr/plugin.cfg")
 
 [gui]
 
@@ -37,3 +37,8 @@ theme/custom="res://Scenes/UI/ui_theme.tres"
 
 rendering_device/driver.windows="d3d12"
 textures/vram_compression/import_etc2_astc=true
+
+[autoload]
+
+Leadr="*res://addons/leadr/autoload/leadr_autoload.gd"
+

@@ -17,3 +17,7 @@ res://Scenes/UI/GameHUD/game_hud.tscn::5f31830911693ffe94867e8fd2227eb8::1792294
 res://Scenes/UI/MainMenu/main_menu.tscn::9d8265b84d0d68c245c9a0eb6f563d29::1792294454::res://.godot/exported/133200997/export-1a5ebb4e92dd75537eaaa81643708631-main_menu.scn
 res://Scenes/UI/ui_theme.tres::2995d12eed9fa8b1bf6781e25076ddef::1792825105::res://.godot/exported/133200997/export-1023bb10cbc798f6619396dc9c8ea3b4-ui_theme.res
 res://Scenes/player.tscn::c0e6805ff3a4c777ff33d1343b2bcec6::1792294954::res://.godot/exported/133200997/export-1753c997600d68ab5d20ae99fddb15c6-player.scn
+res://addons/leadr/ui/leadr_board_view.tscn::a223cd8d9b11d95eef8067611f5d37f8::1792843753::res://.godot/exported/133200997/export-5e8c11bada3dc75ccdd28a314ef718de-leadr_board_view.scn
+res://addons/leadr/ui/leadr_score_entry.tscn::7a0d5592fc3454994fec44f4cf00e964::1792843753::res://.godot/exported/133200997/export-3b59265e5d98ac96de7107c87d2970a1-leadr_score_entry.scn
+res://addons/leadr/ui/leadr_score_submitter.tscn::76adca3fb831085010bc51cbacd4a39c::1792843753::res://.godot/exported/133200997/export-2fdf3cbe48e21dc23eb2614177f4c85d-leadr_score_submitter.scn
+res://addons/leadr/leadr_settings.tres::d48b7f91ec9b6290fdfce1d779b252cf::1792843844::res://.godot/exported/133200997/export-11d6462a054a1d8b530389271f33a6d7-leadr_settings.res

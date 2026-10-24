@@ -291,7 +291,28 @@ func show_leaderboard() -> void:
 	for child in leaderboard_rows.get_children():
 		child.queue_free()
 
-	var entries := LEADERBOARD_STORE.load_entries()
+	var loading_label := Label.new()
+	loading_label.text = "Loading global leaderboard..." if LEADERBOARD_STORE.is_global_available() else "Loading leaderboard..."
+	loading_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	leaderboard_rows.add_child(loading_label)
+
+	call_deferred("_refresh_leaderboard_async")
+	show_page(leaderboard_page)
+
+
+func _refresh_leaderboard_async() -> void:
+	var entries: Array[Dictionary] = []
+	if LEADERBOARD_STORE.is_global_available():
+		entries = await LEADERBOARD_STORE.fetch_global_entries()
+	if entries.is_empty():
+		entries = LEADERBOARD_STORE.load_entries()
+
+	if not is_instance_valid(self) or not is_instance_valid(leaderboard_rows):
+		return
+
+	for child in leaderboard_rows.get_children():
+		child.queue_free()
+
 	if entries.is_empty():
 		var empty_label := Label.new()
 		empty_label.text = "No ascents recorded yet"
@@ -301,8 +322,9 @@ func show_leaderboard() -> void:
 		for index in entries.size():
 			var entry: Dictionary = entries[index]
 			var row := Label.new()
+			var rank := int(entry.get("rank", index + 1))
 			row.text = "%02d  %s  %d pts  %d m  x%d" % [
-				index + 1,
+				rank,
 				str(entry.get("name", "JELLY")),
 				int(entry.get("score", 0)),
 				int(entry.get("height_meters", 0)),
@@ -310,4 +332,3 @@ func show_leaderboard() -> void:
 			]
 			row.add_theme_font_size_override("font_size", 15)
 			leaderboard_rows.add_child(row)
-	show_page(leaderboard_page)

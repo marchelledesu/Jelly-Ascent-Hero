@@ -108,6 +108,7 @@ var game_over_save_button: Button
 var final_run_height := 0
 var final_run_combo := 0
 var leaderboard_saved := false
+var global_leaderboard_submitted := false
 var is_paused := false
 
 
@@ -1168,7 +1169,16 @@ func save_game_over_score() -> bool:
 	game_over_name_input.editable = false
 	game_over_save_button.disabled = true
 	game_over_save_status.text = "Score saved for %s." % player_name
+
+	if not global_leaderboard_submitted and LEADERBOARD_STORE.is_global_available():
+		global_leaderboard_submitted = true
+		call_deferred("_submit_global_score_async", final_run_height, final_run_combo, player_name)
+
 	return true
+
+
+func _submit_global_score_async(height_meters: int, combo_count: int, player_name: String) -> void:
+	await LEADERBOARD_STORE.submit_global_run(height_meters, combo_count, player_name)
 
 
 func retry_after_game_over() -> void:

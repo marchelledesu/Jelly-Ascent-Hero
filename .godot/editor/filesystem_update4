@@ -1,0 +1,4 @@
+res://Scenes/Gameplay/gameplay.gd
+res://Scenes/UI/Leaderboard/leaderboard_store.gd
+res://Scenes/UI/MainMenu/main_menu.gd
+res://Scenes/Platforms/Slingshot/slingshot_platform.tscn

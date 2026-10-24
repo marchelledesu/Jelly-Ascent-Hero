@@ -72,3 +72,95 @@ static func submit_run(height_meters: int, combo_count: int, player_name: String
 
 	entry["saved"] = true
 	return entry
+
+const GLOBAL_BOARD_SLUG := "main"
+
+
+static var _global_board_id: String = ""
+static var _global_board_resolved: bool = false
+
+
+static func _leadr() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null or tree.root == null or not tree.root.has_node("Leadr"):
+		return null
+	return tree.root.get_node("Leadr")
+
+
+static func is_global_available() -> bool:
+	var leadr := _leadr()
+	if leadr == null:
+		return false
+	return bool(leadr.call("is_initialized"))
+
+
+static func _resolve_global_board_id() -> String:
+	if _global_board_resolved:
+		return _global_board_id
+	_global_board_resolved = true
+	var leadr := _leadr()
+	if leadr == null or not bool(leadr.call("is_initialized")):
+		return ""
+	var result: Variant = await leadr.call("get_board", GLOBAL_BOARD_SLUG)
+	if result == null or not bool(result.is_success):
+		if result != null and result.error != null:
+			push_warning("Could not resolve global leaderboard board '%s': %s" % [GLOBAL_BOARD_SLUG, str(result.error.message)])
+		return ""
+	var board: Variant = result.data
+	if board == null:
+		return ""
+	_global_board_id = str(board.id)
+	return _global_board_id
+
+
+static func fetch_global_entries(limit: int = MAX_ENTRIES) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	if not is_global_available():
+		return entries
+	var leadr := _leadr()
+	var board_id := await _resolve_global_board_id()
+	if board_id.is_empty():
+		return entries
+	var result: Variant = await leadr.call("get_scores", board_id, limit)
+	if result == null or not bool(result.is_success):
+		if result != null and result.error != null:
+			push_warning("Could not fetch global leaderboard: %s" % str(result.error.message))
+		return entries
+	var page: Variant = result.data
+	if page == null:
+		return entries
+	for score in page.items:
+		var height_meters := 0
+		var combo := 0
+		if score.metadata is Dictionary:
+			height_meters = int(score.metadata.get("height_meters", 0))
+			combo = int(score.metadata.get("combo", 0))
+		var entry := {
+			"name": str(score.player_name),
+			"score": int(score.value),
+			"height_meters": height_meters,
+			"combo": combo,
+			"rank": int(score.rank),
+			"date": str(score.created_at),
+			"global": true,
+		}
+		entries.append(entry)
+	return entries
+
+
+static func submit_global_run(height_meters: int, combo_count: int, player_name: String) -> Variant:
+	if not is_global_available():
+		return false
+	var leadr := _leadr()
+	var board_id := await _resolve_global_board_id()
+	if board_id.is_empty():
+		return false
+	var score := calculate_score(height_meters, combo_count)
+	var metadata := {"height_meters": height_meters, "combo": combo_count}
+	var result: Variant = await leadr.call("submit_score", board_id, score, player_name, "", metadata)
+	if result == null or not bool(result.is_success):
+		if result != null and result.error != null:
+			push_warning("Could not submit global score: %s" % str(result.error.message))
+		return false
+	return true
+
