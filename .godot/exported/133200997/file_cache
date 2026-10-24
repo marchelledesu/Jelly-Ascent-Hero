@@ -10,7 +10,7 @@ res://Scenes/Actors/Player/player.tscn::99ab2bf9ba545a8e188ef9ce0dce2311::179283
 res://Scenes/Gameplay/gameplay.tscn::aaa5d926ab179da15991a7a1abb13998::1792832158::res://.godot/exported/133200997/export-e1326a4b449ff192f3249a9eb5c49963-gameplay.scn
 res://Scenes/Platforms/Base/platform.tscn::6993f730188467bd8759fb29b2f69419::1792824184::res://.godot/exported/133200997/export-13db08e848215547fa9f7edc719c1453-platform.scn
 res://Scenes/Platforms/Fragile/fragile_platform.tscn::25da7a90015c8a14b9b4435f3ed60a18::1792836866::res://.godot/exported/133200997/export-f146364401eeb71bcfded41ab3e3a74e-fragile_platform.scn
-res://Scenes/Platforms/Slingshot/slingshot_platform.tscn::1d98860a75092080401f5eb9a114409b::1792825830::res://.godot/exported/133200997/export-ec058a232b150bf403b7d7b58caba97f-slingshot_platform.scn
+res://Scenes/Platforms/Slingshot/slingshot_platform.tscn::a912c47129898d5e7c24ca19a1192ea3::1792841835::res://.godot/exported/133200997/export-ec058a232b150bf403b7d7b58caba97f-slingshot_platform.scn
 res://Scenes/Platforms/Standard/standard_platform.tscn::911dbf9905928a5dfc89f3a454136466::1792827102::res://.godot/exported/133200997/export-086b7cd53ee5b81d58a4b58609dae963-standard_platform.scn
 res://Scenes/Platforms/Trampoline/trampoline_platform.tscn::d001dd30602337cdb5e9fec2510e5228::1792825833::res://.godot/exported/133200997/export-a5f14319c0078d872d422b6687307da5-trampoline_platform.scn
 res://Scenes/UI/GameHUD/game_hud.tscn::5f31830911693ffe94867e8fd2227eb8::1792294454::res://.godot/exported/133200997/export-9382e90a32f5bfa98441974a0849728d-game_hud.scn

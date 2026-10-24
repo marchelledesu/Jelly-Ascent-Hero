@@ -143,6 +143,18 @@ func build_background() -> void:
 	motes.color = Color(0.75, 0.95, 0.85, 0.5)
 	add_child(motes)
 
+	# Minecraft-style tip on the background.
+	var tip_label := Label.new()
+	tip_label.text = "Tip: you can always wall bounce!"
+	tip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tip_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	tip_label.offset_top = -40.0
+	tip_label.offset_bottom = -12.0
+	tip_label.add_theme_font_size_override("font_size", 16)
+	tip_label.add_theme_color_override("font_color", Color(0.85, 0.95, 0.85, 0.65))
+	tip_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(tip_label)
+
 
 func rebuild_acid_wave(viewport_size: Vector2) -> void:
 	var base_y := viewport_size.y - 90.0

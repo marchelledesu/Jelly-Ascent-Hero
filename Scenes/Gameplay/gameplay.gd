@@ -75,6 +75,15 @@ var acid_mid: Polygon2D
 var background_layer: CanvasLayer
 var standard_deco: Node2D
 var background_rect: ColorRect
+var hint_label: Label
+var hint_particles: CPUParticles2D
+var hint_base_position := Vector2.ZERO
+var last_tip_platform_id := -1
+var wind_timer := 0.0
+var wind_direction := 1.0
+var wind_indicator: Label
+var same_platform_landings := 0
+var player_was_airborne := true
 var acid_paused := false
 var acid_delay_remaining := 5.0
 var game_over := false
@@ -126,6 +135,22 @@ func _physics_process(delta: float) -> void:
 		return
 
 	run_time += delta
+	var on_floor := player.is_on_floor()
+	if on_floor and player_was_airborne:
+		var platform: Node = player.supporting_platform
+		if not is_instance_valid(platform):
+			platform = player.last_landed_platform
+		if is_instance_valid(platform):
+			var pid := platform.get_instance_id()
+			if pid == last_tip_platform_id:
+				same_platform_landings += 1
+			else:
+				last_tip_platform_id = pid
+				same_platform_landings = 1
+			var show_hint := same_platform_landings >= 3
+			if is_instance_valid(hint_particles):
+				hint_particles.emitting = show_hint
+	player_was_airborne = not on_floor
 	update_wall_positions()
 	update_run_record()
 	update_acid_floor(delta)
@@ -137,6 +162,17 @@ func _physics_process(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	update_biome_ambience(delta)
+	var show_hint := same_platform_landings >= 3
+	if is_instance_valid(hint_label):
+		var target_alpha := 0.85 if show_hint else 0.0
+		hint_label.modulate.a = move_toward(hint_label.modulate.a, target_alpha, delta * 2.5)
+		if hint_label.modulate.a <= 0.01 and not show_hint:
+			hint_label.visible = false
+		else:
+			hint_label.visible = true
+			var t := run_time
+			hint_label.position = hint_base_position + Vector2(sin(t * 1.6) * 2.0, cos(t * 1.2) * 1.5)
+			hint_label.rotation_degrees = sin(t * 1.0) * 1.0
 
 
 func update_run_record() -> void:
@@ -243,7 +279,10 @@ func spawn_chunk() -> void:
 			var ramp_on_left := rng.randf() < TUNING.PLATFORM_RAMP_SIDE_CHANCE
 			platform_x = PLATFORM_X_MIN if ramp_on_left else PLATFORM_X_MAX
 			var ramp_angle := rng.randf_range(TUNING.PLATFORM_RAMP_MIN_ANGLE, TUNING.PLATFORM_RAMP_MAX_ANGLE)
-			platform.set("slingshot_rotation_degrees", -ramp_angle)
+			if ramp_on_left:
+				platform.set("slingshot_rotation_degrees", ramp_angle)
+			else:
+				platform.set("slingshot_rotation_degrees", -ramp_angle)
 			platform.set("slingshot_mirror", not ramp_on_left)
 		platform.position = Vector2(platform_x, highest_platform_y)
 		platform.add_to_group("platform")
@@ -374,6 +413,9 @@ func update_biome() -> void:
 		gravity_multiplier = TUNING.ABYSS_GRAVITY_MULTIPLIER
 		control_multiplier = TUNING.ABYSS_CONTROL_MULTIPLIER
 	player.set_biome_modifiers(gravity_multiplier, drag_multiplier, control_multiplier)
+	if current_biome == 1:
+		wind_timer = 3.0
+		wind_direction = 1.0
 	set_biome_ambience(current_biome)
 	biome_status.add_theme_color_override("font_color", BIOME_TINTS[current_biome].lightened(0.18))
 	biome_banner.text = "%s  |  %s  |  %d m" % [
@@ -383,21 +425,28 @@ func update_biome() -> void:
 	]
 	biome_status.text = "ZONE: %s - %s" % [BIOME_NAMES[current_biome], BIOME_CHALLENGES[current_biome]]
 	biome_banner.visible = true
+	if wind_indicator != null:
+		wind_indicator.visible = (current_biome == 1)
 	biome_banner_timer.start()
 
 
 func apply_biome_effects(delta: float) -> void:
-	if current_biome == 1 and not player.is_on_floor():
-		var gust_strength := clampf(
-			sin(run_time * TUNING.WIND_GUST_FREQUENCY)
-				+ sin(run_time * TUNING.WIND_GUST_SECONDARY_FREQUENCY) * TUNING.WIND_GUST_SECONDARY_STRENGTH,
-			-1.0,
-			1.0
-		)
-		player.apply_wind(gust_strength * WIND_GUST_ACCELERATION, delta)
+	if current_biome == 1:
+		wind_timer -= delta
+		if wind_timer <= 0.0:
+			wind_direction = -wind_direction
+			wind_timer = 3.0
+		if not player.is_on_floor():
+			player.apply_wind(wind_direction * WIND_GUST_ACCELERATION * 0.5, delta)
+		if wind_indicator != null:
+			wind_indicator.text = "WIND: " + ("->" if wind_direction > 0 else "<-")
 	biome_tint.color = biome_tint.color.lerp(BIOME_TINTS[current_biome], 1.0 - exp(-TUNING.BIOME_TINT_TRANSITION_SPEED * delta))
 	if background_rect != null:
 		background_rect.color = background_rect.color.lerp(BIOME_BACKGROUNDS[current_biome], 1.0 - exp(-TUNING.BIOME_TINT_TRANSITION_SPEED * delta))
+	if hint_label != null:
+		var target_hint_color := BIOME_BACKGROUNDS[current_biome].lightened(0.35)
+		target_hint_color.a = 0.85 if same_platform_landings >= 3 else hint_label.modulate.a
+		hint_label.modulate = hint_label.modulate.lerp(target_hint_color, 1.0 - exp(-TUNING.BIOME_TINT_TRANSITION_SPEED * delta))
 
 
 func create_biome_ambience(container: CanvasLayer) -> void:
@@ -578,8 +627,7 @@ func update_biome_ambience(delta: float) -> void:
 		var phase := float(ambience["phase"])
 		match int(ambience["style"]):
 			0:
-				var gust_direction := signf(sin(run_time * TUNING.WIND_GUST_FREQUENCY + phase))
-				ambience_position.x += speed * (gust_direction if not is_zero_approx(gust_direction) else 1.0) * delta
+				ambience_position.x += speed * wind_direction * delta
 				ambience_position.y += sin(run_time * TUNING.WIND_STREAK_DRIFT_FREQUENCY + phase) * TUNING.WIND_STREAK_DRIFT_AMPLITUDE * delta
 				if ambience_position.x < -TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN:
 					ambience_position.x = viewport_size.x + TUNING.BIOME_AMBIENCE_VIEWPORT_MARGIN
@@ -683,6 +731,43 @@ func create_background() -> void:
 	standard_deco.add_child(sun)
 
 	standard_deco.visible = (current_biome == 0)
+	# Background hint text.
+	hint_label = Label.new()
+	hint_label.text = "you can always wall bounce!"
+	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hint_label.position = viewport_size * 0.5 - Vector2(300, 18)
+	hint_label.size = Vector2(600, 40)
+	hint_label.add_theme_font_size_override("font_size", 22)
+	hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	hint_label.modulate = BIOME_BACKGROUNDS[0].lightened(0.35)
+	hint_label.modulate.a = 0.85
+	hint_base_position = hint_label.position
+	hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	background_layer.add_child(hint_label)
+	hint_label.visible = false
+
+	# Particles to draw attention to the tip.
+	hint_particles = CPUParticles2D.new()
+	hint_particles.emitting = false
+	hint_particles.amount = 24
+	hint_particles.lifetime = 1.2
+	hint_particles.explosiveness = 0.0
+	hint_particles.randomness = 0.8
+	hint_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	hint_particles.emission_rect_extents = Vector2(260, 12)
+	hint_particles.position = viewport_size * 0.5
+	hint_particles.direction = Vector2(0, -1)
+	hint_particles.spread = 60.0
+	hint_particles.initial_velocity_min = 10.0
+	hint_particles.initial_velocity_max = 40.0
+	hint_particles.gravity = Vector2(0, -20)
+	hint_particles.scale_amount_min = 1.0
+	hint_particles.scale_amount_max = 2.5
+	hint_particles.color = Color(1.0, 0.95, 0.7, 0.8)
+	background_layer.add_child(hint_particles)
+	hint_particles.visible = false
+
 
 
 	# Subtle horizon gradient overlay for depth.
@@ -726,6 +811,15 @@ func create_biome_ui() -> void:
 	biome_status.add_theme_color_override("font_shadow_color", Color(0.04, 0.06, 0.12, 0.9))
 	biome_status.add_theme_constant_override("shadow_offset_x", 1)
 	biome_status.add_theme_constant_override("shadow_offset_y", 1)
+	wind_indicator = Label.new()
+	wind_indicator.position = Vector2(18.0, 150.0)
+	wind_indicator.add_theme_font_size_override("font_size", 13)
+	wind_indicator.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0, 0.9))
+	wind_indicator.add_theme_color_override("font_shadow_color", Color(0.04, 0.06, 0.12, 0.9))
+	wind_indicator.add_theme_constant_override("shadow_offset_x", 1)
+	wind_indicator.add_theme_constant_override("shadow_offset_y", 1)
+	wind_indicator.visible = false
+	biome_layer.add_child(wind_indicator)
 	biome_layer.add_child(biome_status)
 
 	biome_banner_timer = Timer.new()
@@ -760,7 +854,10 @@ func dev_spawn_platform(platform_type: int) -> void:
 	if platform_type == PlatformType.SLINGSHOT_RAMP:
 		var ramp_on_left := spawn_x <= WORLD_CENTER_X
 		spawn_x = PLATFORM_X_MIN if ramp_on_left else PLATFORM_X_MAX
-		platform.set("slingshot_rotation_degrees", -TUNING.PLATFORM_RAMP_DEFAULT_ANGLE)
+		if ramp_on_left:
+			platform.set("slingshot_rotation_degrees", TUNING.PLATFORM_RAMP_DEFAULT_ANGLE)
+		else:
+			platform.set("slingshot_rotation_degrees", -TUNING.PLATFORM_RAMP_DEFAULT_ANGLE)
 		platform.set("slingshot_mirror", not ramp_on_left)
 	platform.position = Vector2(spawn_x, player.global_position.y - TUNING.DEV_TEST_PLATFORM_VERTICAL_OFFSET)
 	add_child(platform)

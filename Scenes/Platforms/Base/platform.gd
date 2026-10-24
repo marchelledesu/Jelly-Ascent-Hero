@@ -92,7 +92,6 @@ func _ready() -> void:
 		if platform_type == PlatformType.STICKY_DOUGH:
 			body_data.rigidbody.collision_layer = 0
 	anchor_softbody_ends()
-	collapse_timer.timeout.connect(_on_collapse_timeout)
 
 
 func _process(_delta: float) -> void:
